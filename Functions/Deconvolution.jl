@@ -1,3 +1,7 @@
+using FFTW, Optimization, SpecialFunctions
+include("../Functions/Convolution.jl")
+
+
 function deconvolution(t::Vector, f::Vector, temperature::Vector,
     n::Int=35, c::Int=2, tol::Float64=1e-6, show_ini::Bool=false, show_opt::Bool=false)
     #=
@@ -66,15 +70,16 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector,
     lb = zeros(n, 1)
 
     if c == 2
-        a = [], b = []
+        a = empty
+        b = empty
     elseif c == 1
-        [a, b] = ConstDeriv(t, id, 1)
+        #[a, b] = ConstDeriv(t, id, 1)
     elseif c == 2
-        [a, b] = ConstDeriv(t, id, 1)
+        #[a, b] = ConstDeriv(t, id, 1)
     end
 
     # Optimization part
-
+    return g_0
 end
 
 function data_validation(t, f, temperature)
@@ -83,31 +88,31 @@ function data_validation(t, f, temperature)
     if length(t) != length(f) || length(t) != length(f)
         error("inputs are not of the same lengths.")
 
-    # Check for imaginary, NaN or infinite value
-    elseif any(!isreal,t) || any(!isreal,f) || any(!isreal,temperature)
+        # Check for imaginary, NaN or infinite value
+    elseif any(!isreal, t) || any(!isreal, f) || any(!isreal, temperature)
         error("inputs contain imaginary values.")
-    
-    # Check for NaN values
-    elseif any(isnan,t) || any(isnan,f) || any(isnan,temperature)
+
+        # Check for NaN values
+    elseif any(isnan, t) || any(isnan, f) || any(isnan, temperature)
         error("inputs contains NaN values.")
-    # Check for NaN values
-    elseif any(isinf,t) || any(isinf,f) || any(isinf,temperature)
+        # Check for NaN values
+    elseif any(isinf, t) || any(isinf, f) || any(isinf, temperature)
         error("inputs contains infinite values.")
     end
 end
 
 function option_validation(n, c, tol, show_ini, show_opt)
-    if n<0
+    if n < 0
         error("number of nodes must be a positive integer.")
-    elseif n<15
+    elseif n < 15
         @warn println("the number of nodes should be at least larger than 20, ideally 30 to 60.")
-    elseif n>100
+    elseif n > 100
         @warn println("the number of nodes is large (>100) and should be arount 60 at the maximum.")
-    elseif c<0 || c>2
+    elseif c < 0 || c > 2
         error("optionnal input for constraints must be 0, 1 or 2.")
     elseif !isinteger(c)
         error("optionnal constraints must be an integer.")
-    # elseif tol #TODO: when I have the optimization, add constraints for this
+        # elseif tol #TODO: when I have the optimization, add constraints for this
     elseif typeof(show_ini) == Bool
         error("input either `true` or `false` to show or not the initial fit figure.")
     elseif typeof(show_opt) == Bool
@@ -115,24 +120,32 @@ function option_validation(n, c, tol, show_ini, show_opt)
     end
 end
 
-function set_nodes(nt,n0)
-#=
-Function that sets the position of the nodes on the transfer function based on
-the number of nodes asked by the user.
-Inputs:
-    - nt: Total number of data in the input vectors [-]
-    - n0: User defined number of nodes on the transfer function [-]
-Output:
-    - id: A vector of length "n" of node positions on the transfer function [-]
-=#
+function set_nodes(nt, n0)
+    #=
+    Function that sets the position of the nodes on the transfer function based on
+    the number of nodes asked by the user.
+    Inputs:
+        - nt: Total number of data in the input vectors [-]
+        - n0: User defined number of nodes on the transfer function [-]
+    Output:
+        - id: A vector of length "n" of node positions on the transfer function [-]
+    =#
+    n = n0 - 1
 
-id = unique(round(logspace(log10(1),log10(nt),n0)))'
-n = length(id)
-
-
+    while n != n0
+        id = unique(round.(exp10.(range(0, stop=log10(nt), length=n))))
+        n = length(id)
+        n += 1
+    end
 end
 
 function deconv_ini(idall, f, temperature)
+    # Define objective function (RMSE) between model and experimental values.
+    obj_fun(x) = @. sqrt(sum((convolution(f, x[1]*expinti(x[2]/idall)) - temperature)^2) / length(x))
 
-    return g_0
+    # Define the optimization on 2 variables
+    x0 = [1.0, 1.0]
+    x_opt = solve(obj_fun, x0)
+
+    return x_opt[1]*expint(x_opt[2]/idall)
 end

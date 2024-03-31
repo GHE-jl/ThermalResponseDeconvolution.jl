@@ -5,7 +5,7 @@ In Julia, this script can be called from the project folder.
 
 include("../Functions/Convolution.jl")
 
-using CSV, Plots
+using CSV, DataFrames, Plots
 
 # Import synthetic data
 DATA = CSV.read("Data/Data.csv", DataFrame)
@@ -19,7 +19,7 @@ g = G[:, 2]
 # Convolution algorithm
 f = diff([0; T_in - T_out])
 
-Time = @time T_tmp = Convolution(f, g) #todo: 
+Time = @time T_tmp = convolution(f, g) #todo: 
 T_conv = T_tmp.+T_out[1]
 
 # Print results
