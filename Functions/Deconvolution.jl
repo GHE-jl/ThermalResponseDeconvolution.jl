@@ -1,9 +1,8 @@
-using FFTW, Optimization, SpecialFunctions
+using FFTW, Optim, SpecialFunctions, Plots
 include("../Functions/Convolution.jl")
 
 
-function deconvolution(t::Vector, f::Vector, temperature::Vector,
-    n::Int=35, c::Int=2, tol::Float64=1e-6, show_ini::Bool=false, show_opt::Bool=false)
+function deconvolution(t::Vector, f::Vector, temperature::Vector, n::Int=35, c::Int=2, tol::Float64=1e-6, show_ini::Bool=false, show_opt::Bool=false)
     #=
     Optimization algorithm to perform deconvolution on the experimental data
     extracted from a TRT to recover a short-term g-function (STgF).The function
@@ -54,7 +53,7 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector,
     option_validation(n, c, tol, show_ini, show_opt)
 
     # 1. Initial parameters
-    nt = length(T)
+    nt = length(temperature)
     idall = 1:n
 
     # 2. Define nodes positions
@@ -62,6 +61,7 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector,
 
     # 3. Compute initial solution
     g_0 = deconv_ini(idall, f, temperature)
+    show_ini ? show(t, f, g_0, temperature) : nothing
 
     # 4. Set weights for the multi-objective function
     w = set_weights(g_0, f, temperature, n)
@@ -78,6 +78,8 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector,
         #[a, b] = ConstDeriv(t, id, 1)
     end
 
+    # Show results
+
     # Optimization part
     return g_0
 end
@@ -85,7 +87,7 @@ end
 function data_validation(t, f, temperature)
 
     # Check if vectors are all the same length
-    if length(t) != length(f) || length(t) != length(f)
+    if length(t) != length(f) || length(t) != length(temperature)
         error("inputs are not of the same lengths.")
 
         # Check for imaginary, NaN or infinite value
@@ -113,9 +115,9 @@ function option_validation(n, c, tol, show_ini, show_opt)
     elseif !isinteger(c)
         error("optionnal constraints must be an integer.")
         # elseif tol #TODO: when I have the optimization, add constraints for this
-    elseif typeof(show_ini) == Bool
+    elseif typeof(show_ini) != Bool
         error("input either `true` or `false` to show or not the initial fit figure.")
-    elseif typeof(show_opt) == Bool
+    elseif typeof(show_opt) != Bool
         error("input either `true` or `false` to show or not the optimized fit figure.")
     end
 end
@@ -130,13 +132,15 @@ function set_nodes(nt, n0)
     Output:
         - id: A vector of length "n" of node positions on the transfer function [-]
     =#
-    n = n0 - 1
 
-    while n != n0
-        id = unique(round.(exp10.(range(0, stop=log10(nt), length=n))))
-        n = length(id)
-        n += 1
+    n_tmp = n0-1
+    id = []
+
+    while length(id) != n0
+        id = unique(round.(exp10.(range(0, stop=log10(nt), length=n_tmp))))
+        n_tmp += 1
     end
+    return id
 end
 
 function deconv_ini(idall, f, temperature)
@@ -145,7 +149,21 @@ function deconv_ini(idall, f, temperature)
 
     # Define the optimization on 2 variables
     x0 = [1.0, 1.0]
-    x_opt = solve(obj_fun, x0)
+    x_opt = optimize(obj_fun, x0, GradientDescent(), Optim.Options(show_trace=true))
 
     return x_opt[1]*expint(x_opt[2]/idall)
+end
+
+function show(t, f, g, temperature)
+    display(plot(t/3600/24, g, layout=1, linewidth=1.5, linestyle=:solid, linecolor=:black, label="g"))
+    plot!(t/3600/24, diff([0;g]), secondary=true, linewidth=1.5, linestyle=:dash, linecolor=:cyan, label="g'")
+    plot!(framestyle=:box, grid=false, xlabel="Time (d)", ylabel="Temperature (°C)",
+    xlabelfontsize=11, ylabelfontsize=11, xtickfontsize=11, ytickfontsize=11,
+    legendfontsize=11)
+
+    plot(t/3600/24, temperature, layout=2, linewidth=1.5, linestyle=:solid, linecolor=:black, label="Reference")
+    plot!(t/3600/24, convolution(f, g), linewidth=1.5, linestyle=:dash, linecolor=:cyan, label="Convolved")
+    plot!(framestyle=:box, grid=false, xlabel="Time (d)", ylabel="Temperature (°C)",
+    xlabelfontsize=11, ylabelfontsize=11, xtickfontsize=11, ytickfontsize=11,
+    legendfontsize=11)
 end

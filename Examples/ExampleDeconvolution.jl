@@ -14,9 +14,9 @@ G = CSV.read("Data/gRef.csv", DataFrame)
 t = DATA[:, 1]
 temperature_in = DATA[:, 2]
 temperature_out = DATA[:, 3]
-temperature_exp = temperature_out-temperature_out[1]
+temperature_exp = temperature_out .- temperature_out[1]
 g = G[:, 2]
 
 # Deconvolution algorithm
-f = diff([0;T_in-T_out])
-g = deconvolution(t, f, temperature_exp)
+f = diff([0;temperature_in-temperature_out])
+g = deconvolution(t, f, temperature_exp, 35, 2, 1e-6, true)
