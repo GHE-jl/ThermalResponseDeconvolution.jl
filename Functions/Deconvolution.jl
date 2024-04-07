@@ -61,7 +61,7 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector, n::Int=35, c::
 
     # 3. Compute initial solution
     g_0 = deconv_ini(idall, f, temperature)
-    show_ini ? show(t, f, g_0, temperature) : nothing
+    show_ini ? show_fig(t, f, g_0, temperature) : nothing
 
     # 4. Set weights for the multi-objective function
     w = set_weights(g_0, f, temperature, n)
@@ -85,6 +85,9 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector, n::Int=35, c::
 end
 
 function data_validation(t, f, temperature)
+    #=
+
+    =#
 
     # Check if vectors are all the same length
     if length(t) != length(f) || length(t) != length(temperature)
@@ -104,6 +107,9 @@ function data_validation(t, f, temperature)
 end
 
 function option_validation(n, c, tol, show_ini, show_opt)
+    #=
+
+    =#
     if n < 0
         error("number of nodes must be a positive integer.")
     elseif n < 15
@@ -144,6 +150,10 @@ function set_nodes(nt, n0)
 end
 
 function deconv_ini(idall, f, temperature)
+    #= 
+
+    =#
+
     # Define objective function (RMSE) between model and experimental values.
     obj_fun(x) = @. sqrt(sum((convolution(f, x[1]*expinti(x[2]/idall)) - temperature)^2) / length(x))
 
@@ -154,16 +164,30 @@ function deconv_ini(idall, f, temperature)
     return x_opt[1]*expint(x_opt[2]/idall)
 end
 
-function show(t, f, g, temperature)
-    display(plot(t/3600/24, g, layout=1, linewidth=1.5, linestyle=:solid, linecolor=:black, label="g"))
-    plot!(t/3600/24, diff([0;g]), secondary=true, linewidth=1.5, linestyle=:dash, linecolor=:cyan, label="g'")
-    plot!(framestyle=:box, grid=false, xlabel="Time (d)", ylabel="Temperature (°C)",
-    xlabelfontsize=11, ylabelfontsize=11, xtickfontsize=11, ytickfontsize=11,
-    legendfontsize=11)
+function show_fig(t, f, g, temperature)
+    #= Function that prints results of a deconvolution process (either the initial results 
+    or the optimized one).
+    =#
+    # Define the first plot with ĝ and ĝ'.
+    p1 = plot(t/3600/24, g, xaxis="Time (d)", yaxis="ĝ (-)", xscale=:log10,
+        linewidth=1.5, linestyle=:solid, linecolor=:blue, label="ĝ",legend=:topleft)
+    p1 = plot!(twinx(), t[2:end]/3600/24, diff(g),
+        yaxis="ĝ' (-)", xscale=:log10, yscale=:log10,
+        linewidth=1.5, linestyle=:dash, linecolor=:black, label="ĝ'",legend=:left)
+    p1 = plot!(framestyle=:box, grid=false,
+        xlabelfontsize=8, ylabelfontsize=8, xtickfontsize=8, ytickfontsize=8,
+        legendfontsize=8)
 
-    plot(t/3600/24, temperature, layout=2, linewidth=1.5, linestyle=:solid, linecolor=:black, label="Reference")
-    plot!(t/3600/24, convolution(f, g), linewidth=1.5, linestyle=:dash, linecolor=:cyan, label="Convolved")
-    plot!(framestyle=:box, grid=false, xlabel="Time (d)", ylabel="Temperature (°C)",
-    xlabelfontsize=11, ylabelfontsize=11, xtickfontsize=11, ytickfontsize=11,
-    legendfontsize=11)
+    # Define the second plot with the experimental and reconstructed temperature signals
+    p2 = plot(t/3600/24, temperature, linewidth=1.5, linestyle=:solid, linecolor=:black,
+        label="Reference")
+    p2 = plot!(t/3600/24, convolution(f, g), linewidth=1.5, linestyle=:dash,
+        linecolor=:cyan, label="Convolved")
+    p2 = plot!(framestyle=:box, grid=false, xlabel="Time (d)", ylabel="Temperature (°C)",
+        xlabelfontsize=8, ylabelfontsize=8, xtickfontsize=8, ytickfontsize=8,
+        legendfontsize=8)
+
+    # Join both plots and print them in a layout with adequate sizes
+    display(plot(p1, p2, layout=(2, 1), size=(480, 340))) # ~[17cm,12cm]
+    #savefig("ExampleDeconv_fig.pdf")
 end
