@@ -54,14 +54,14 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector, n::Int=35, c::
 
     # 1. Initial parameters
     nt = length(temperature)
-    idall = 1:n
+    idall = collect(1:nt)
 
-    # 2. Define nodes positions
-    id = set_nodes(nt, n)
-
-    # 3. Compute initial solution
+    # 2. Compute initial solution
     g_0 = deconv_ini(idall, f, temperature)
     show_ini ? show_fig(t, f, g_0, temperature) : nothing
+
+    # 3. Define nodes positions
+    id = set_nodes(nt, n)
 
     # 4. Set weights for the multi-objective function
     w = set_weights(g_0, f, temperature, n)
@@ -155,7 +155,8 @@ function deconv_ini(idall, f, temperature)
     =#
 
     # Define objective function (RMSE) between model and experimental values.
-    obj_fun(x) = @. sqrt(sum((convolution(f, x[1]*expinti(x[2]/idall)) - temperature)^2) / length(x))
+    # obj_fun(x) = @. sqrt(sum((convolution(f, x[1]*expinti(x[2]/idall)) - temperature)^2) / length(t))
+    objfun(x) = sqrt(sum((convolution(f, x[1].*expinti.(x[2]./idall)).-(T_in.-T_in[1])).^2)/length(idall))
 
     # Define the optimization on 2 variables
     x0 = [1.0, 1.0]

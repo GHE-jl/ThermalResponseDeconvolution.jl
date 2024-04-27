@@ -19,12 +19,11 @@ g = G[:, 2]
 # Convolution algorithm
 f = diff([0; T_in - T_out])
 
-Time = @time T_tmp = convolution(f, g) #todo: 
+T_tmp = convolution(f, g) #todo: 
 T_conv = T_tmp.+T_out[1]
 
 # Print results
-println("Temperature RMSE: $round(sqrt(mean((T_conv.-T_out).^2)), 2) [degC]")
-# println("Convolution time: $(Time) [s]")
+println("Temperature RMSE: ",round(sqrt(sum((T_conv.-T_out).^2)/length(t)), digits=2)," [degC]")
 
 # Plot results
 plot(t/3600/24, T_out, linewidth=1.5, linestyle=:solid, linecolor=:black, label="Reference")

@@ -11,7 +11,7 @@ using CSV, DataFrames, Plots
 DATA = CSV.read("Data/Data.csv", DataFrame)
 G = CSV.read("Data/gRef.csv", DataFrame)
 
-t = DATA[:, 1]; t[1] = 1
+t = DATA[:, 1];
 temperature_in = DATA[:, 2]
 temperature_out = DATA[:, 3]
 temperature_exp = temperature_out .- temperature_out[1]
