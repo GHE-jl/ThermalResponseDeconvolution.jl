@@ -1,14 +1,18 @@
 """
-Exemple of convolution on thermal response test data.
-In Julia, this script can be called from the project folder.
+To debug the file, in the REPL:
+using Debugger
+using Revise
+include("tests/TestDeconv.jl")
 """
-
-include("../src/Deconvolution.jl")
 
 using CSV
 using DataFrames
 using Plots
 using Revise
+
+include("../src/Deconvolution.jl")
+
+module deconvolution
 
 function main()
 
@@ -29,5 +33,4 @@ function main()
     println("Done")
 
 end
-
-main()
+end

@@ -1,8 +1,20 @@
-using FFTW, Optim, SpecialFunctions, Plots
-include("../Functions/Convolution.jl")
+using FFTW
+using Optim
+using SpecialFunctions
+using Plots
+include("../src/Convolution.jl")
 
 
-function deconvolution(t::Vector, f::Vector, temperature::Vector, n::Int=35, c::Int=2, tol::Float64=1e-6, show_ini::Bool=false, show_opt::Bool=false)
+function deconvolution(
+    t::Vector{Float64},
+    f::Vector{Float64},
+    temperature::Vector{Float64},
+    n::Int=35,
+    c::Int=2,
+    tol::Float64=1e-6,
+    show_ini::Bool=false,
+    show_opt::Bool=false,
+)
     #=
     Optimization algorithm to perform deconvolution on the experimental data
     extracted from a TRT to recover a short-term g-function (STgF).The function
@@ -64,7 +76,7 @@ function deconvolution(t::Vector, f::Vector, temperature::Vector, n::Int=35, c::
     id = set_nodes(nt, n)
 
     # 4. Set weights for the multi-objective function
-    w = set_weights(g_0, f, temperature, n)
+    w = set_weights(g_0, f, temperature)
 
     # 5. Set linear inequality constraints and bounds
     lb = zeros(n, 1)
@@ -113,9 +125,13 @@ function option_validation(n, c, tol, show_ini, show_opt)
     if n < 0
         error("number of nodes must be a positive integer.")
     elseif n < 15
-        @warn println("the number of nodes should be at least larger than 20, ideally 30 to 60.")
+        @warn println(
+            "the number of nodes should be at least larger than 20, ideally 30 to 60.",
+        )
     elseif n > 100
-        @warn println("the number of nodes is large (>100) and should be arount 60 at the maximum.")
+        @warn println(
+            "the number of nodes is large (>100) and should be arount 60 at the maximum.",
+        )
     elseif c < 0 || c > 2
         error("optionnal input for constraints must be 0, 1 or 2.")
     elseif !isinteger(c)
@@ -126,6 +142,23 @@ function option_validation(n, c, tol, show_ini, show_opt)
     elseif typeof(show_opt) != Bool
         error("input either `true` or `false` to show or not the optimized fit figure.")
     end
+end
+
+function deconv_ini(idall, f, temperature)
+    #= 
+
+    =#
+
+    # Define objective function (RMSE) between model and experimental values.
+    obj_fun(x) = sqrt(sum((convolution(f, x[1] .* expint.(x[2] ./ idall))
+                           .-
+                           (temperature .- temperature[1])) .^ 2) / length(idall))
+
+    # Define the optimization on 2 variables
+    x0 = [1.0, 1.0]
+    x_opt = optimize(obj_fun, x0, NelderMead(), Optim.Options(show_trace=true))
+
+    return x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ idall)
 end
 
 function set_nodes(nt, n0)
@@ -139,7 +172,7 @@ function set_nodes(nt, n0)
         - id: A vector of length "n" of node positions on the transfer function [-]
     =#
 
-    n_tmp = n0-1
+    n_tmp = n0 - 1
     id = []
 
     while length(id) != n0
@@ -149,20 +182,32 @@ function set_nodes(nt, n0)
     return id
 end
 
-function deconv_ini(idall, f, temperature)
-    #= 
+function set_weights(g_0, f, temperature)
+    #=
 
     =#
+    # Define proportion for terms in the objective function
+    w_0 = [0.7, 0.15, 0.15]
 
-    # Define objective function (RMSE) between model and experimental values.
-    # obj_fun(x) = @. sqrt(sum((convolution(f, x[1]*expinti(x[2]/idall)) - temperature)^2) / length(t))
-    objfun(x) = sqrt(sum((convolution(f, x[1].*expinti.(x[2]./idall)).-(T_in.-T_in[1])).^2)/length(idall))
+    # Compute initial transfer functionn derivatives
+    dg_0 = diff([0;g_0])
+    ddg_0 = diff(diff([0;g_0]))
 
-    # Define the optimization on 2 variables
-    x0 = [1.0, 1.0]
-    x_opt = optimize(obj_fun, x0, GradientDescent(), Optim.Options(show_trace=true))
+    # Compute each terms of the objective function
+    nt = length(g_0)
+    e = zeros(3)
+    e[1] = sqrt((sum((convolution(f,g_0)-temperature).^2))/nt)
+    e[2] = sqrt((sum((dg_0).^2))/nt)
+    e[3] = sqrt((sum((ddg_0).^2))/nt)
 
-    return x_opt[1]*expint(x_opt[2]/idall)
+    # Define the objective functions weights
+    prop = w_0/sum(e)
+    w = w_0/prop
+
+    # Set array weight
+    w_array = [3*ones(trunc(Int,nt*0.05));ones(trunc(Int,nt*0.95))]
+    
+    return w, w_array
 end
 
 function show_fig(t, f, g, temperature)
@@ -170,23 +215,69 @@ function show_fig(t, f, g, temperature)
     or the optimized one).
     =#
     # Define the first plot with ĝ and ĝ'.
-    p1 = plot(t/3600/24, g, xaxis="Time (d)", yaxis="ĝ (-)", xscale=:log10,
-        linewidth=1.5, linestyle=:solid, linecolor=:blue, label="ĝ",legend=:topleft)
-    p1 = plot!(twinx(), t[2:end]/3600/24, diff(g),
-        yaxis="ĝ' (-)", xscale=:log10, yscale=:log10,
-        linewidth=1.5, linestyle=:dash, linecolor=:black, label="ĝ'",legend=:left)
-    p1 = plot!(framestyle=:box, grid=false,
-        xlabelfontsize=8, ylabelfontsize=8, xtickfontsize=8, ytickfontsize=8,
-        legendfontsize=8)
+    p1 = plot(
+        t / 3600 / 24,
+        g,
+        xaxis="Time (d)",
+        yaxis="ĝ (-)",
+        xscale=:log10,
+        linewidth=1.5,
+        linestyle=:solid,
+        linecolor=:blue,
+        label="ĝ",
+        legend=:topleft,
+    )
+    p1 = plot!(
+        twinx(),
+        t / 3600 / 24,
+        diff([0;g]),
+        yaxis="ĝ' (-)",
+        xscale=:log10,
+        yscale=:log10,
+        linewidth=1.5,
+        linestyle=:dash,
+        linecolor=:black,
+        label="ĝ'",
+        legend=:left,
+    )
+    p1 = plot!(
+        framestyle=:box,
+        grid=false,
+        xlabelfontsize=8,
+        ylabelfontsize=8,
+        xtickfontsize=8,
+        ytickfontsize=8,
+        legendfontsize=8,
+    )
 
     # Define the second plot with the experimental and reconstructed temperature signals
-    p2 = plot(t/3600/24, temperature, linewidth=1.5, linestyle=:solid, linecolor=:black,
-        label="Reference")
-    p2 = plot!(t/3600/24, convolution(f, g), linewidth=1.5, linestyle=:dash,
-        linecolor=:cyan, label="Convolved")
-    p2 = plot!(framestyle=:box, grid=false, xlabel="Time (d)", ylabel="Temperature (°C)",
-        xlabelfontsize=8, ylabelfontsize=8, xtickfontsize=8, ytickfontsize=8,
-        legendfontsize=8)
+    p2 = plot(
+        t / 3600 / 24,
+        temperature,
+        linewidth=1.5,
+        linestyle=:solid,
+        linecolor=:black,
+        label="Reference",
+    )
+    p2 = plot!(
+        t / 3600 / 24,
+        convolution(f, g),
+        linewidth=1.5,
+        linestyle=:dash,
+        linecolor=:cyan,
+        label="Convolved",
+    )
+    p2 = plot!(
+        framestyle=:box,
+        grid=false,
+        xlabel="Time (d)",
+        ylabel="Temperature (°C)",
+        xlabelfontsize=8,
+        ylabelfontsize=8,
+        xtickfontsize=8,
+        ytickfontsize=8,
+        legendfontsize=8,
+    )
 
     # Join both plots and print them in a layout with adequate sizes
     display(plot(p1, p2, layout=(2, 1), size=(480, 340))) # ~[17cm,12cm]
