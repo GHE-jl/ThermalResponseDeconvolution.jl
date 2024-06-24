@@ -1,9 +1,6 @@
-using FFTW
 using Optim
 using SpecialFunctions
 using Plots
-include("../src/Convolution.jl")
-
 
 function deconvolution(
     t::Vector{Float64},

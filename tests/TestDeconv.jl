@@ -1,18 +1,16 @@
 """
 To debug the file, in the REPL:
-using Debugger
+cd("C:/Users/Gabriel/OneDrive - polymtlus/Documents/Coding/Julia/GHEDeconvolutions")
 using Revise
-include("tests/TestDeconv.jl")
+using GHEDeconvolutions
+
+includet("tests/TestDeconv.jl")
 """
 
 using CSV
 using DataFrames
-using Plots
-using Revise
 
-include("../src/Deconvolution.jl")
-
-module deconvolution
+using .GHEDeconvolutions
 
 function main()
 
@@ -33,4 +31,5 @@ function main()
     println("Done")
 
 end
-end
+
+main()
