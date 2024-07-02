@@ -21,6 +21,7 @@ export data_validation,
     deconv_ini,
     set_nodes,
     set_weights,
+    const_derivative,
+    obj_fun,
     show_fig
-
 end

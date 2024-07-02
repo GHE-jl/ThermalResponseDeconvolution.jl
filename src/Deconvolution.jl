@@ -1,5 +1,7 @@
 using Optim
 using SpecialFunctions
+using SparseArrays
+using PCHIPInterpolation
 using Plots
 
 function deconvolution(
@@ -8,7 +10,6 @@ function deconvolution(
     temperature::Vector{Float64},
     n::Int=35,
     c::Int=2,
-    tol::Float64=1e-6,
     show_ini::Bool=false,
     show_opt::Bool=false,
 )
@@ -23,8 +24,6 @@ function deconvolution(
       - TExp: Experimental temperature variation (T_exp = T_out-T_0) [degC]
       - [Optionnal Inputs]:
           - n: Number of nodes (default: 35)
-          - tol: Optimality tolerance for solver (default: 1e-6)
-          - StepTol: Step tolerance for solver (default: 1e-15)
           - c: Choice of constraints (default: 2):
               0: No constraint
               1: Positivity
@@ -59,7 +58,7 @@ function deconvolution(
 
     # 0. Data validation and Initialization
     data_validation(t, f, temperature)
-    option_validation(n, c, tol, show_ini, show_opt)
+    option_validation(n, c, show_ini, show_opt)
 
     # 1. Initial parameters
     nt = length(temperature)
@@ -78,44 +77,53 @@ function deconvolution(
     # 5. Set linear inequality constraints and bounds
     lb = zeros(n, 1)
 
-    if c == 2
-        a = empty
-        b = empty
-    elseif c == 1
-        #[a, b] = ConstDeriv(t, id, 1)
-    elseif c == 2
-        #[a, b] = ConstDeriv(t, id, 1)
-    end
+    a, b = const_derivative(t, id, c)
+    # Note: Usually, the 2 constraints give best results. Either using 1 or 0 constraints
+    # may be usefull in some cases.
 
-    # Show results
-
-    # Optimization part
-    return g_0
+    # 6. Optimization
+    x_opt = optimize(x -> obj_fun(x, id, idall, f, temperature, w, w_array),
+        TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
+        g_0,
+        LBFGS(),
+        Optim.Options(
+            iterations=1000,
+            show_trace=true)
+        )
+    
+    # 7. Final interpolation and convolution
+    interp = Interpolator(id, x_opt.minimizer)
+    g = interp(idall)
+    T = convolution(f, g)
+    
+    # 8. Plot final result
+    show_opt ? show_fig(t, f, g, T) : nothing
+    return g, T, x_opt
 end
 
-function data_validation(t, f, temperature)
+function data_validation(t::Vector{Float64}, f::Vector{Float64}, T::Vector{Float64})
     #=
 
     =#
 
     # Check if vectors are all the same length
-    if length(t) != length(f) || length(t) != length(temperature)
+    if length(t) != length(f) || length(t) != length(T)
         error("inputs are not of the same lengths.")
 
         # Check for imaginary, NaN or infinite value
-    elseif any(!isreal, t) || any(!isreal, f) || any(!isreal, temperature)
+    elseif any(!isreal, t) || any(!isreal, f) || any(!isreal, T)
         error("inputs contain imaginary values.")
 
         # Check for NaN values
-    elseif any(isnan, t) || any(isnan, f) || any(isnan, temperature)
+    elseif any(isnan, t) || any(isnan, f) || any(isnan, T)
         error("inputs contains NaN values.")
         # Check for NaN values
-    elseif any(isinf, t) || any(isinf, f) || any(isinf, temperature)
+    elseif any(isinf, t) || any(isinf, f) || any(isinf, T)
         error("inputs contains infinite values.")
     end
 end
 
-function option_validation(n, c, tol, show_ini, show_opt)
+function option_validation(n, c, show_ini, show_opt)
     #=
 
     =#
@@ -141,7 +149,8 @@ function option_validation(n, c, tol, show_ini, show_opt)
     end
 end
 
-function deconv_ini(idall, f, temperature)
+function deconv_ini(idall::Vector{Int}, f::Vector{Float64},
+    temperature::Vector{Float64})
     #= 
 
     =#
@@ -158,7 +167,7 @@ function deconv_ini(idall, f, temperature)
     return x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ idall)
 end
 
-function set_nodes(nt, n0)
+function set_nodes(nt::Int, n0::Int)
     #=
     Function that sets the position of the nodes on the transfer function based on
     the number of nodes asked by the user.
@@ -173,13 +182,13 @@ function set_nodes(nt, n0)
     id = []
 
     while length(id) != n0
-        id = unique(round.(exp10.(range(0, stop=log10(nt), length=n_tmp))))
+        id = unique(trunc.(Int,exp10.(range(0, stop=log10(nt), length=n_tmp))))
         n_tmp += 1
     end
     return id
 end
 
-function set_weights(g_0, f, temperature)
+function set_weights(g_0::Vector{Float64}, f::Vector{Float64}, temperature::Vector{Float64})
     #=
 
     =#
@@ -187,27 +196,109 @@ function set_weights(g_0, f, temperature)
     w_0 = [0.7, 0.15, 0.15]
 
     # Compute initial transfer functionn derivatives
-    dg_0 = diff([0;g_0])
-    ddg_0 = diff(diff([0;g_0]))
+    dg_0 = diff([0; g_0])
+    ddg_0 = diff(diff([0; g_0]))
 
     # Compute each terms of the objective function
     nt = length(g_0)
     e = zeros(3)
-    e[1] = sqrt((sum((convolution(f,g_0)-temperature).^2))/nt)
-    e[2] = sqrt((sum((dg_0).^2))/nt)
-    e[3] = sqrt((sum((ddg_0).^2))/nt)
+    e[1] = sqrt((sum((convolution(f, g_0) - temperature) .^ 2)) / nt)
+    e[2] = sqrt((sum((dg_0) .^ 2)) / nt)
+    e[3] = sqrt((sum((ddg_0) .^ 2)) / nt)
 
     # Define the objective functions weights
-    prop = w_0/sum(e)
-    w = w_0/prop
+    prop = w_0 / sum(e)
+    w = w_0 / prop
 
     # Set array weight
-    w_array = [3*ones(trunc(Int,nt*0.05));ones(trunc(Int,nt*0.95))]
-    
+    w_array = [3 * ones(trunc(Int, nt * 0.05)); ones(trunc(Int, nt * 0.95))]
+
     return w, w_array
 end
 
-function show_fig(t, f, g, temperature)
+function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
+    #=
+
+    =#
+
+    # Input parameters
+    n = length(id)
+    e = ones(Float64, n)
+    h = diff([0; id])
+
+    # First constraint: positive first derivative
+    a1 = spdiagm(0 => -e, 1 => e[1:n-1])
+    a1 = -a1[1:end-1, :] ./ h[1:end-1]
+    b1 = zeros(Float64, n - 1)
+
+    # Second constraint: negative second derivative on a SpecialFunctions
+    # Find time at around 3 hours of test
+    if maximum(t) >= 3600 * 3
+        id_nodes = argmin(abs.(3600 * 3 .- t[id]))
+    else
+        id_nodes = 0
+    end
+
+    @show id_nodes
+
+    # Construct the second derivative a2 and b2
+    c = zero(n-2-id_nodes)
+    for kk in 1:n-2-id_nodes
+        c[kk] = (id[id_nodes+kk+1] - id[id_nodes+kk])/(id[id_nodes+kk] - id[id_nodes+kk-1])
+        # a2[kk, id_nodes+kk-1:id_nodes+kk+1] .= [c, -(c+1), 1]
+    end
+    # TODO: Try to do directly a sparse matrix like with a1
+    a2 = spdiagm(0 => c, 1 => -(c + 1), 2 => ones(Float64, n - 2 - id_nodes))
+    b2 = zeros(Float64, n - 2 - id_nodes)
+
+    # Setting output constraints depending on the optional input `c`
+    if cnst == 2
+        A = [a1; a2]
+        B = [b1, b2]
+    elseif cnst == 1
+        A = a1
+        B = b1
+    elseif cnst == 0
+        A = []
+        B = []
+    else
+        error("Optionnal constraint input must be 0, 1 or 2.")
+    end
+
+    # Verification
+    if any(isnan, A) || any(isnan, B)
+        error("Presence of NaN in the output.")
+    end
+
+    return A, B
+end
+
+function obj_fun(g_opt::Vector{Float64}, id::Vector{Int}, idall::Vector{Int},
+    f::Vector{Float64}, T::Vector{Float64}, w, w_array)
+    #=
+
+    =#
+
+    # Interpolate the transfer function
+    interp = Interpolator(id, g_opt)
+    g = interp(idall)
+
+    # Compute initial transfer functionn derivatives
+    dg = diff([0; g])
+    ddg = diff(diff([0; g]))
+
+    # Compute each terms of the objective function
+    nt = length(g)
+    e = zeros(3)
+    e[1] = w[1].*sqrt((sum((w_array.*(convolution(f, g) - T)) .^ 2)) / nt)
+    e[2] = w[2].*sqrt((sum((dg) .^ 2)) / nt)
+    e[3] = w[3].*sqrt((sum((ddg) .^ 2)) / nt)
+
+    return sum(e)
+end
+
+function show_fig(t::Vector{Float64}, f::Vector{Float64}, g::Vector{Float64},
+    temperature::Vector{Float64})
     #= Function that prints results of a deconvolution process (either the initial results 
     or the optimized one).
     =#
@@ -227,7 +318,7 @@ function show_fig(t, f, g, temperature)
     p1 = plot!(
         twinx(),
         t / 3600 / 24,
-        diff([0;g]),
+        diff([0; g]),
         yaxis="ĝ' (-)",
         xscale=:log10,
         yscale=:log10,
