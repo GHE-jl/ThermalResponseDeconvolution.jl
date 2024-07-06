@@ -27,26 +27,26 @@ T_conv = T_tmp .+ T_out[1]
 rmse = sqrt(sum((T_conv .- T_out) .^ 2) / length(t))
 
 # Print results
-println("Temperature RMSE: ", round(rmse, digits = 2), " [degC]")
+println("Temperature RMSE: ", round(rmse; digits = 2), " [degC]")
 
 # Plot results
 plot(
     t / 3600 / 24,
-    T_out,
+    T_out;
     linewidth = 1.5,
     linestyle = :solid,
     linecolor = :black,
-    label = "Reference",
+    label = "Reference"
 )
 plot!(
     t / 3600 / 24,
-    T_conv,
+    T_conv;
     linewidth = 1.5,
     linestyle = :dash,
     linecolor = :deepskyblue,
-    label = "Convolved",
+    label = "Convolved"
 )
-plot!(
+plot!(;
     framestyle = :box,
     grid = false,
     xlabel = "Time (d)",
@@ -55,9 +55,7 @@ plot!(
     ylabelfontsize = 11,
     xtickfontsize = 11,
     ytickfontsize = 11,
-    legendfontsize = 11,
+    legendfontsize = 11
 )
 annotate!(
-    (0.1, 0.1),
-    text("RMSE = " * string(round(rmse, digits = 2)) * "[degC]", :left, 11),
-)
+    (0.1, 0.1), text("RMSE = " * string(round(rmse; digits = 2)) * "[degC]", :left, 11))

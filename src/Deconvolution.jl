@@ -5,13 +5,13 @@ using PCHIPInterpolation
 using Plots
 
 function deconvolution(
-    t::Vector{Float64},
-    f::Vector{Float64},
-    temperature::Vector{Float64},
-    n::Int=35,
-    c::Int=2,
-    show_ini::Bool=false,
-    show_opt::Bool=false,
+        t::Vector{Float64},
+        f::Vector{Float64},
+        temperature::Vector{Float64},
+        n::Int = 35,
+        c::Int = 2,
+        show_ini::Bool = false,
+        show_opt::Bool = false
 )
     #=
     Optimization algorithm to perform deconvolution on the experimental data
@@ -82,20 +82,19 @@ function deconvolution(
     # may be usefull in some cases.
 
     # 6. Optimization
-    x_opt = optimize(x -> obj_fun(x, id, idall, f, temperature, w, w_array),
+    x_opt = optimize(
+        x -> obj_fun(x, id, idall, f, temperature, w, w_array),
         TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
         g_0,
         LBFGS(),
-        Optim.Options(
-            iterations=1000,
-            show_trace=true)
-        )
-    
+        Optim.Options(; iterations = 1000, show_trace = true)
+    )
+
     # 7. Final interpolation and convolution
     interp = Interpolator(id, x_opt.minimizer)
     g = interp(idall)
     T = convolution(f, g)
-    
+
     # 8. Plot final result
     show_opt ? show_fig(t, f, g, T) : nothing
     return g, T, x_opt
@@ -131,11 +130,11 @@ function option_validation(n, c, show_ini, show_opt)
         error("number of nodes must be a positive integer.")
     elseif n < 15
         @warn println(
-            "the number of nodes should be at least larger than 20, ideally 30 to 60.",
+            "the number of nodes should be at least larger than 20, ideally 30 to 60."
         )
     elseif n > 100
         @warn println(
-            "the number of nodes is large (>100) and should be arount 60 at the maximum.",
+            "the number of nodes is large (>100) and should be arount 60 at the maximum."
         )
     elseif c < 0 || c > 2
         error("optionnal input for constraints must be 0, 1 or 2.")
@@ -149,20 +148,26 @@ function option_validation(n, c, show_ini, show_opt)
     end
 end
 
-function deconv_ini(idall::Vector{Int}, f::Vector{Float64},
-    temperature::Vector{Float64})
+function deconv_ini(idall::Vector{Int}, f::Vector{Float64}, temperature::Vector{Float64})
     #= 
 
     =#
 
     # Define objective function (RMSE) between model and experimental values.
-    obj_fun(x) = sqrt(sum((convolution(f, x[1] .* expint.(x[2] ./ idall))
-                           .-
-                           (temperature .- temperature[1])) .^ 2) / length(idall))
+    function obj_fun(x)
+        return sqrt(
+            sum(
+            (
+            convolution(f, x[1] .* expint.(x[2] ./ idall)) .-
+            (temperature .- temperature[1])
+        ) .^ 2,
+        ) / length(idall),
+        )
+    end
 
     # Define the optimization on 2 variables
     x0 = [1.0, 1.0]
-    x_opt = optimize(obj_fun, x0, NelderMead(), Optim.Options(show_trace=true))
+    x_opt = optimize(obj_fun, x0, NelderMead(), Optim.Options(; show_trace = true))
 
     return x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ idall)
 end
@@ -182,7 +187,7 @@ function set_nodes(nt::Int, n0::Int)
     id = []
 
     while length(id) != n0
-        id = unique(trunc.(Int,exp10.(range(0, stop=log10(nt), length=n_tmp))))
+        id = unique(trunc.(Int, exp10.(range(0; stop = log10(nt), length = n_tmp))))
         n_tmp += 1
     end
     return id
@@ -227,8 +232,8 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
     h = diff([0; id])
 
     # First constraint: positive first derivative
-    a1 = spdiagm(0 => -e, 1 => e[1:n-1])
-    a1 = -a1[1:end-1, :] ./ h[1:end-1]
+    a1 = spdiagm(0 => -e, 1 => e[1:(n - 1)])
+    a1 = -a1[1:(end - 1), :] ./ h[1:(end - 1)]
     b1 = zeros(Float64, n - 1)
 
     # Second constraint: negative second derivative on a SpecialFunctions
@@ -242,9 +247,10 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
     @show id_nodes
 
     # Construct the second derivative a2 and b2
-    c = zero(n-2-id_nodes)
-    for kk in 1:n-2-id_nodes
-        c[kk] = (id[id_nodes+kk+1] - id[id_nodes+kk])/(id[id_nodes+kk] - id[id_nodes+kk-1])
+    c = zero(n - 2 - id_nodes)
+    for kk in 1:(n - 2 - id_nodes)
+        c[kk] = (id[id_nodes + kk + 1] - id[id_nodes + kk]) /
+                (id[id_nodes + kk] - id[id_nodes + kk - 1])
         # a2[kk, id_nodes+kk-1:id_nodes+kk+1] .= [c, -(c+1), 1]
     end
     # TODO: Try to do directly a sparse matrix like with a1
@@ -273,8 +279,15 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
     return A, B
 end
 
-function obj_fun(g_opt::Vector{Float64}, id::Vector{Int}, idall::Vector{Int},
-    f::Vector{Float64}, T::Vector{Float64}, w, w_array)
+function obj_fun(
+        g_opt::Vector{Float64},
+        id::Vector{Int},
+        idall::Vector{Int},
+        f::Vector{Float64},
+        T::Vector{Float64},
+        w,
+        w_array
+)
     #=
 
     =#
@@ -290,84 +303,85 @@ function obj_fun(g_opt::Vector{Float64}, id::Vector{Int}, idall::Vector{Int},
     # Compute each terms of the objective function
     nt = length(g)
     e = zeros(3)
-    e[1] = w[1].*sqrt((sum((w_array.*(convolution(f, g) - T)) .^ 2)) / nt)
-    e[2] = w[2].*sqrt((sum((dg) .^ 2)) / nt)
-    e[3] = w[3].*sqrt((sum((ddg) .^ 2)) / nt)
+    e[1] = w[1] .* sqrt((sum((w_array .* (convolution(f, g) - T)) .^ 2)) / nt)
+    e[2] = w[2] .* sqrt((sum((dg) .^ 2)) / nt)
+    e[3] = w[3] .* sqrt((sum((ddg) .^ 2)) / nt)
 
     return sum(e)
 end
 
-function show_fig(t::Vector{Float64}, f::Vector{Float64}, g::Vector{Float64},
-    temperature::Vector{Float64})
+function show_fig(
+        t::Vector{Float64}, f::Vector{Float64}, g::Vector{Float64}, temperature::Vector{Float64}
+)
     #= Function that prints results of a deconvolution process (either the initial results 
     or the optimized one).
     =#
     # Define the first plot with ĝ and ĝ'.
     p1 = plot(
         t / 3600 / 24,
-        g,
-        xaxis="Time (d)",
-        yaxis="ĝ (-)",
-        xscale=:log10,
-        linewidth=1.5,
-        linestyle=:solid,
-        linecolor=:blue,
-        label="ĝ",
-        legend=:topleft,
+        g;
+        xaxis = "Time (d)",
+        yaxis = "ĝ (-)",
+        xscale = :log10,
+        linewidth = 1.5,
+        linestyle = :solid,
+        linecolor = :blue,
+        label = "ĝ",
+        legend = :topleft
     )
     p1 = plot!(
         twinx(),
         t / 3600 / 24,
-        diff([0; g]),
-        yaxis="ĝ' (-)",
-        xscale=:log10,
-        yscale=:log10,
-        linewidth=1.5,
-        linestyle=:dash,
-        linecolor=:black,
-        label="ĝ'",
-        legend=:left,
+        diff([0; g]);
+        yaxis = "ĝ' (-)",
+        xscale = :log10,
+        yscale = :log10,
+        linewidth = 1.5,
+        linestyle = :dash,
+        linecolor = :black,
+        label = "ĝ'",
+        legend = :left
     )
-    p1 = plot!(
-        framestyle=:box,
-        grid=false,
-        xlabelfontsize=8,
-        ylabelfontsize=8,
-        xtickfontsize=8,
-        ytickfontsize=8,
-        legendfontsize=8,
+    p1 = plot!(;
+        framestyle = :box,
+        grid = false,
+        xlabelfontsize = 8,
+        ylabelfontsize = 8,
+        xtickfontsize = 8,
+        ytickfontsize = 8,
+        legendfontsize = 8
     )
 
     # Define the second plot with the experimental and reconstructed temperature signals
     p2 = plot(
         t / 3600 / 24,
-        temperature,
-        linewidth=1.5,
-        linestyle=:solid,
-        linecolor=:black,
-        label="Reference",
+        temperature;
+        linewidth = 1.5,
+        linestyle = :solid,
+        linecolor = :black,
+        label = "Reference"
     )
     p2 = plot!(
         t / 3600 / 24,
-        convolution(f, g),
-        linewidth=1.5,
-        linestyle=:dash,
-        linecolor=:cyan,
-        label="Convolved",
+        convolution(f, g);
+        linewidth = 1.5,
+        linestyle = :dash,
+        linecolor = :cyan,
+        label = "Convolved"
     )
-    p2 = plot!(
-        framestyle=:box,
-        grid=false,
-        xlabel="Time (d)",
-        ylabel="Temperature (°C)",
-        xlabelfontsize=8,
-        ylabelfontsize=8,
-        xtickfontsize=8,
-        ytickfontsize=8,
-        legendfontsize=8,
+    p2 = plot!(;
+        framestyle = :box,
+        grid = false,
+        xlabel = "Time (d)",
+        ylabel = "Temperature (°C)",
+        xlabelfontsize = 8,
+        ylabelfontsize = 8,
+        xtickfontsize = 8,
+        ytickfontsize = 8,
+        legendfontsize = 8
     )
 
     # Join both plots and print them in a layout with adequate sizes
-    display(plot(p1, p2, layout=(2, 1), size=(480, 340))) # ~[17cm,12cm]
+    return display(plot(p1, p2; layout = (2, 1), size = (480, 340))) # ~[17cm,12cm]
     #savefig("ExampleDeconv_fig.pdf")
 end

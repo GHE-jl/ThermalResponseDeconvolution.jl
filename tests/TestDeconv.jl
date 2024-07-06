@@ -2,16 +2,14 @@
 To debug the file, in the REPL:
 cd("C:/Users/Gabriel/OneDrive - polymtlus/Documents/Coding/Julia/GHEDeconvolutions")
 using Revise
-using Debugger
 using GHEDeconvolutions
-
-includet("tests/TestDeconv.jl")
+includet("tests\\TestDeconv.jl")
+@run main()
 """
 
 using CSV
 using DataFrames
 using Revise
-using Debugger
 
 using GHEDeconvolutions
 
@@ -31,8 +29,7 @@ function main()
     f = diff([0; temperature_in - temperature_out])
     g = deconvolution(t, f, temperature_exp, 35, 2, false, false)
 
-    println("Done")
-
+    return println("Done")
 end
 
 #main()
