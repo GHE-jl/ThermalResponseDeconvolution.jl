@@ -32,7 +32,7 @@ function deconvolution(
          - show_opt: Display final guess figure (default: false)
     Outputs:
         - g: Interpolated estimated STgF obtained by deconvolution [-]
-       - T: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
+       - T_conv: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
        - [Optionnal Outputs]:
            - Time: Computing time to converge [s]
            - [Id,gOpt]: Node positions and optimized transfer function values
@@ -58,7 +58,7 @@ function deconvolution(
 
     # 0. Data validation and Initialization
     g = similar(temperature)
-    T = similar(temperature)
+    T_conv = similar(temperature)
     data_validation(t, f, temperature)
     option_validation(n, c, show_ini, show_opt)
 
@@ -95,11 +95,11 @@ function deconvolution(
     # 7. Final interpolation and convolution
     interp = Interpolator(id, x_opt.minimizer)
     g = interp(idall)
-    T = convolution(f, g)
+    T_conv = convolution(f, g)
 
     # 8. Plot final result
     show_opt ? show_fig(t, f, g, T) : nothing
-    return g, T, x_opt
+    return g, T_conv, x_opt
 end
 
 function data_validation(t::Vector{Float64}, f::Vector{Float64}, T::Vector{Float64})
