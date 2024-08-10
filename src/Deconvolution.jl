@@ -5,14 +5,14 @@ using PCHIPInterpolation
 using Plots
 
 function deconvolution(
-        t::Vector{Float64},
-        f::Vector{Float64},
-        temperature::Vector{Float64},
+        t::Vector{T},
+        f::Vector{T},
+        temperature::Vector{T},
         n::Int = 35,
         c::Int = 2,
         show_ini::Bool = false,
         show_opt::Bool = false
-)
+) where T<:Real
     #=
     Optimization algorithm to perform deconvolution on the experimental data
     extracted from a TRT to recover a short-term g-function (STgF).The function
