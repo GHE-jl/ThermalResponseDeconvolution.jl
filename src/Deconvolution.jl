@@ -57,6 +57,8 @@ function deconvolution(
     =#
 
     # 0. Data validation and Initialization
+    g = similar(temperature)
+    T = similar(temperature)
     data_validation(t, f, temperature)
     option_validation(n, c, show_ini, show_opt)
 
