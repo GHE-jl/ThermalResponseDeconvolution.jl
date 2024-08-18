@@ -5,14 +5,14 @@ using PCHIPInterpolation
 using Plots
 
 function deconvolution(
-        t::Vector{Float64},
-        f::Vector{Float64},
-        temperature::Vector{Float64},
+        t::Vector{T},
+        f::Vector{T},
+        temperature::Vector{T},
         n::Int = 35,
         c::Int = 2,
         show_ini::Bool = false,
         show_opt::Bool = false
-)
+) where T<:Real
     #=
     Optimization algorithm to perform deconvolution on the experimental data
     extracted from a TRT to recover a short-term g-function (STgF).The function
@@ -32,7 +32,7 @@ function deconvolution(
          - show_opt: Display final guess figure (default: false)
     Outputs:
         - g: Interpolated estimated STgF obtained by deconvolution [-]
-       - T: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
+       - T_conv: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
        - [Optionnal Outputs]:
            - Time: Computing time to converge [s]
            - [Id,gOpt]: Node positions and optimized transfer function values
@@ -57,6 +57,8 @@ function deconvolution(
     =#
 
     # 0. Data validation and Initialization
+    g = similar(temperature)
+    T_conv = similar(temperature)
     data_validation(t, f, temperature)
     option_validation(n, c, show_ini, show_opt)
 
@@ -92,12 +94,14 @@ function deconvolution(
 
     # 7. Final interpolation and convolution
     interp = Interpolator(id, x_opt.minimizer)
+    g = interp(idall)
+    T_conv = convolution(f, g)
     ĝ = interp(idall)
     T = convolution(f, g)
 
     # 8. Plot final result
     show_opt ? show_fig(t, f, g, T) : nothing
-    return ĝ, T, x_opt
+    return g, T_conv, x_opt
 end
 
 function data_validation(t::Vector{Float64}, f::Vector{Float64}, T::Vector{Float64})

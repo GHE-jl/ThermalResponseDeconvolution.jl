@@ -1,7 +1,7 @@
 using FFTW
 
-function convolution(f::Vector{Float64}, g::Vector{Float64})
-    # Perform a stationary convolution with fft and ifft with 2xn -1zero padding to avoid circular convolution.
+function convolution(f::Vector{T}, g::Vector{T}) where T<:Real
+    # Perform a stationary convolution with fft and ifft with 2xn -1 zero padding to avoid circular convolution.
 
     # Initialization
     n = length(f)
