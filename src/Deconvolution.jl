@@ -42,8 +42,8 @@ function deconvolution(
 
      Notes:
      [1]: The inputs "f" and "TExp" must have constant time step for the
-     deconvolution to work effectively. Otherwise, these vectors must be
-     interpolated.
+     deconvolution to work effectively, because of how convolution works. Otherwise, these
+     vectors must be interpolated.
      [2]: The input "f" is the time derivative of the perturbation function, which
      can be $T_{in}-T_{out}$ [$^\circ$C], $Q$ [W] or $q$ [W/m]. The transfer function 
      will be defined for the units of input used.
@@ -53,7 +53,7 @@ function deconvolution(
      Geothermics, 100, 102302. https://doi.org/10.1016/j.geothermics.2021.102302
 
      Author: Gabriel Dion
-     Date: 04-2024
+     Date: 08-2024
     =#
 
     # 0. Data validation and Initialization
@@ -92,12 +92,12 @@ function deconvolution(
 
     # 7. Final interpolation and convolution
     interp = Interpolator(id, x_opt.minimizer)
-    g = interp(idall)
+    ĝ = interp(idall)
     T = convolution(f, g)
 
     # 8. Plot final result
     show_opt ? show_fig(t, f, g, T) : nothing
-    return g, T, x_opt
+    return ĝ, T, x_opt
 end
 
 function data_validation(t::Vector{Float64}, f::Vector{Float64}, T::Vector{Float64})
@@ -150,19 +150,21 @@ end
 
 function deconv_ini(idall::Vector{Int}, f::Vector{Float64}, temperature::Vector{Float64})
     #= 
-
+    Function that ajust an exponential integral equation to obtain a first approximation of
+    the ground heat exchanger transfer function. The algorithm uses a convolution product
+    to compute the objective function.
+    Inputs:
+        - idall: Numerized time vector [-]
+        - f: Incremental perturbation function [degC, W, W/m]
+        - temperature: Experimental temperature variation at the borehole outlet [degC]
+    Output:
+        - g_0: Initial guess of the transfer function based on an exponential integral [-]
     =#
 
     # Define objective function (RMSE) between model and experimental values.
     function obj_fun(x)
-        return sqrt(
-            sum(
-            (
-            convolution(f, x[1] .* expint.(x[2] ./ idall)) .-
-            (temperature .- temperature[1])
-        ) .^ 2,
-        ) / length(idall),
-        )
+        return sqrt(sum((convolution(f, x[1] .* expint.(x[2] ./ idall)) .-
+            (temperature .- temperature[1])) .^ 2) / length(idall))
     end
 
     # Define the optimization on 2 variables
@@ -187,7 +189,7 @@ function set_nodes(nt::Int, n0::Int)
     id = []
 
     while length(id) != n0
-        id = unique(trunc.(Int, exp10.(range(0; stop = log10(nt), length = n_tmp))))
+        id = unique(round.(Int, exp10.(range(0, stop = log10(nt), length = n_tmp))))
         n_tmp += 1
     end
     return id
@@ -195,8 +197,19 @@ end
 
 function set_weights(g_0::Vector{Float64}, f::Vector{Float64}, temperature::Vector{Float64})
     #=
-
+    Function that computes the weights of each term in the deconvolution objective function
+    based on the weights obtained using the initial transfer function guess. The desired
+    weights are so that e[1]~0.7, e[2]~0.15, e[3]~0.15.
+    Inputs:
+        - g_0: Initial transfer function guess based on an exponential integral [-]
+        - f: Incremental perturbation function [degC, W, W/m]
+        - temperature: Experimental temperature variation at the borehole outlet [degC]
+    Outputs:
+        - w: Weights of each term in the objective function (3x1 vector) [-]
+        - w_array: Array weights to emphazise the reconstruction of the transfer function's
+            initial impulse. 
     =#
+
     # Define proportion for terms in the objective function
     w_0 = [0.7, 0.15, 0.15]
 
@@ -223,60 +236,82 @@ end
 
 function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
     #=
-
+    Set the linear inequality constraints for the problem Ax <= b used to constrain the
+    deconvolution algorithm. There are two different constraints applied on the transfer 
+    function:
+        1. A positive first derivative constraint (strictly growing function)
+        2. A negative second derivative constraint after an inflexion point
+    Inputs:
+        - t: Time vector starting at 0, with constant time step [s]
+        - id: Nodes position on the transfer function [-]
+        - cnst: Constraint choice (default to 2):
+            0: No constraint applied to the deconvolution algorithm
+            1: Only the first constraint is applied
+            2: The two available constraints are applied.
+    Outputs:
+        - a: Linear inequality constraint matrix in Ax <= b of size (m x n), where "m" is
+            the number of inequalities and "n" is the number of nodes (lenght(id)).
+        - b: A constraint vector of (m x 1) in Ax <= b to respect in the optimization. 
     =#
 
     # Input parameters
     n = length(id)
-    e = ones(Float64, n)
-    h = diff([0; id])
 
     # First constraint: positive first derivative
-    a1 = spdiagm(0 => -e, 1 => e[1:(n - 1)])
-    a1 = -a1[1:(end - 1), :] ./ h[1:(end - 1)]
-    b1 = zeros(Float64, n - 1)
+    function const_1(id, n)
+        # Construct parameters
+        e = ones(Float64, n)
+        h = diff([0; id])
+        # Build matrix and constraint vector
+        a1 = spdiagm(0 => -e, 1 => e[1:(n - 1)])
+        a1 = -a1[1:(end - 1), :] ./ h[1:(end - 1)]
+        b1 = zeros(Float64, n - 1)
+        return a1, b1
+    end
 
     # Second constraint: negative second derivative on a SpecialFunctions
-    # Find time at around 3 hours of test
-    if maximum(t) >= 3600 * 3
-        id_nodes = argmin(abs.(3600 * 3 .- t[id]))
-    else
-        id_nodes = 0
-    end
+    function const_2(t, id, n)
+        # Find time at around 3 hours of test
+        if maximum(t) >= 3600 * 3
+            id_nodes = argmin(abs.(3600 * 3 .- t[id]))
+        else
+            id_nodes = 0
+        end
 
-    @show id_nodes
+        # Construct the second derivative a2 and b2
+        c = @. (id[(id_nodes + 2):(end - 1)] - id[(id_nodes + 1):(end - 2)]) /
+               (id[(id_nodes + 1):(end - 2)] - id[id_nodes:(end - 3)])
 
-    # Construct the second derivative a2 and b2
-    c = zero(n - 2 - id_nodes)
-    for kk in 1:(n - 2 - id_nodes)
-        c[kk] = (id[id_nodes + kk + 1] - id[id_nodes + kk]) /
-                (id[id_nodes + kk] - id[id_nodes + kk - 1])
-        # a2[kk, id_nodes+kk-1:id_nodes+kk+1] .= [c, -(c+1), 1]
+        a2 = spzeros(n - 2 - id_nodes, n)
+        for ii in 1:(n - 2 - id_nodes)
+            a2[ii, (id_nodes + ii):(id_nodes + ii + 2)] = [c[ii], -(c[ii] .+ 1), 1.0]
+        end
+
+        b2 = spzeros(Float64, n - 2 - id_nodes)
+        return a2, b2
     end
-    # TODO: Try to do directly a sparse matrix like with a1
-    a2 = spdiagm(0 => c, 1 => -(c + 1), 2 => ones(Float64, n - 2 - id_nodes))
-    b2 = zeros(Float64, n - 2 - id_nodes)
 
     # Setting output constraints depending on the optional input `c`
     if cnst == 2
-        A = [a1; a2]
-        B = [b1, b2]
+        a1, b1 = const_1(id, n)
+        a2, b2 = const_2(t, id, n)
+        a = [a1; a2]
+        b = [b1; b2]
     elseif cnst == 1
-        A = a1
-        B = b1
+        a, b = const_1(id, n)
     elseif cnst == 0
-        A = []
-        B = []
+        a = []
+        b = []
     else
-        error("Optionnal constraint input must be 0, 1 or 2.")
+        error("Constraint number must be either 0, 1 or 2.")
     end
 
     # Verification
-    if any(isnan, A) || any(isnan, B)
+    if any(isnan, a) || any(isnan, b)
         error("Presence of NaN in the output.")
     end
 
-    return A, B
+    return a, b
 end
 
 function obj_fun(
@@ -289,7 +324,19 @@ function obj_fun(
         w_array
 )
     #=
-
+    Computes the multi-objective function that allows to optimize the position of nodes on
+    the transfer function, so that experimental temperature are recreated.
+    Inputs:
+        - g_opt: The noded transfer function that is being iterated on [-]
+        - id: Nodes position on the transfer function [-]
+        - idall: Numerized time vector [-]
+        - f: Incremental perturbation function [degC, W, W/m]
+        - T: Experimental temperature variation at the borehole outlet [degC]
+        - w: Weights of each term in the objective function (3x1 vector) [-]
+        - w_array: Array weights to emphazise the reconstruction of the transfer function's
+            initial impulse.
+    Output:
+        - sum(e): The value of the objective function to minimize by the deconvolution
     =#
 
     # Interpolate the transfer function
@@ -310,12 +357,15 @@ function obj_fun(
     return sum(e)
 end
 
-function show_fig(
-        t::Vector{Float64}, f::Vector{Float64}, g::Vector{Float64}, temperature::Vector{Float64}
+function show_fig(t::Vector{Float64},
+    f::Vector{Float64},
+    g::Vector{Float64},
+    temperature::Vector{Float64}
 )
     #= Function that prints results of a deconvolution process (either the initial results 
     or the optimized one).
     =#
+    
     # Define the first plot with ĝ and ĝ'.
     p1 = plot(
         t / 3600 / 24,
