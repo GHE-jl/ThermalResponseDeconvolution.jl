@@ -27,7 +27,7 @@ function main()
 
     # Deconvolution algorithm
     f = diff([0; temperature_in - temperature_out])
-    g = deconvolution(t, f, temperature_exp, 35, 2, false, false)
+    g = deconvolution(t, f, temperature_exp, 35, 2, true, true)
 
     return println("Done")
 end

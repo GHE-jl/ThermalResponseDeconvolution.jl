@@ -21,7 +21,9 @@ g = G[:, 2]
 # Convolution algorithm
 f = diff([0; T_in - T_out])
 
-T_tmp = convolution(f, g) #todo: 
+@time T_tmp = convolution(f, g)
+@time T_tmp2 = convolution2(f, g)
+@time T_tmp3 = convolution4(f, g)
 T_conv = T_tmp .+ T_out[1]
 
 rmse = sqrt(sum((T_conv .- T_out) .^ 2) / length(t))

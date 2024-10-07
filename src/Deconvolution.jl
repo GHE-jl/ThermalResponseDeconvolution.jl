@@ -1,7 +1,7 @@
-using Optim
+using Optim, LineSearches
 using SpecialFunctions
-using SparseArrays
 using PCHIPInterpolation
+using LinearAlgebra
 using Plots
 
 function deconvolution(
@@ -66,15 +66,16 @@ function deconvolution(
     nt = length(temperature)
     idall = collect(1:nt)
 
-    # 2. Compute initial solution
-    g_0 = deconv_ini(idall, f, temperature)
-    show_ini ? show_fig(t, f, g_0, temperature) : nothing
-
-    # 3. Define nodes positions
+    # 2. Define nodes positions
     id = set_nodes(nt, n)
 
+    # 3. Compute initial solution
+    g_0 = deconv_ini(idall, f, temperature)
+    show_ini ? show_fig(t, f, g_0, temperature) : nothing
+    g_0_opt = g_0[id]
+
     # 4. Set weights for the multi-objective function
-    w = set_weights(g_0, f, temperature)
+    w, w_array = set_weights(g_0, f, temperature)
 
     # 5. Set linear inequality constraints and bounds
     lb = zeros(n, 1)
@@ -85,19 +86,17 @@ function deconvolution(
 
     # 6. Optimization
     x_opt = optimize(
-        x -> obj_fun(x, id, idall, f, temperature, w, w_array),
-        TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
-        g_0,
-        LBFGS(),
-        Optim.Options(; iterations = 1000, show_trace = true)
+        (x) -> obj_fun(x, id, idall, f, temperature, w, w_array),
+        #TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
+        g_0_opt,
+        #IPNewton(),
+        #Optim.Options(; iterations = 1000, show_trace = true)
     )
 
     # 7. Final interpolation and convolution
     interp = Interpolator(id, x_opt.minimizer)
-    g = interp(idall)
-    T_conv = convolution(f, g)
-    ĝ = interp(idall)
-    T = convolution(f, g)
+    ĝ = interp.(idall)
+    T_conv = convolution(f, ĝ)
 
     # 8. Plot final result
     show_opt ? show_fig(t, f, g, T) : nothing
@@ -267,7 +266,7 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
         e = ones(Float64, n)
         h = diff([0; id])
         # Build matrix and constraint vector
-        a1 = spdiagm(0 => -e, 1 => e[1:(n - 1)])
+        a1 = diagm(0 => -e, 1 => e[1:(n - 1)])
         a1 = -a1[1:(end - 1), :] ./ h[1:(end - 1)]
         b1 = zeros(Float64, n - 1)
         return a1, b1
@@ -286,12 +285,12 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
         c = @. (id[(id_nodes + 2):(end - 1)] - id[(id_nodes + 1):(end - 2)]) /
                (id[(id_nodes + 1):(end - 2)] - id[id_nodes:(end - 3)])
 
-        a2 = spzeros(n - 2 - id_nodes, n)
+        a2 = zeros(n - 2 - id_nodes, n)
         for ii in 1:(n - 2 - id_nodes)
             a2[ii, (id_nodes + ii):(id_nodes + ii + 2)] = [c[ii], -(c[ii] .+ 1), 1.0]
         end
 
-        b2 = spzeros(Float64, n - 2 - id_nodes)
+        b2 = zeros(Float64, n - 2 - id_nodes)
         return a2, b2
     end
 
@@ -345,7 +344,7 @@ function obj_fun(
 
     # Interpolate the transfer function
     interp = Interpolator(id, g_opt)
-    g = interp(idall)
+    g = interp.(idall)
 
     # Compute initial transfer functionn derivatives
     dg = diff([0; g])
