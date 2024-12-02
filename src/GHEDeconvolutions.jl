@@ -12,10 +12,10 @@ include("Deconvolution.jl")
 include("utils.jl")
 
 # Basic export
-export deconvolution, convolution
+export convolution, deconvolution 
 
 # Optionnal export
-export data_validation,
+public data_validation,
        option_validation,
        deconv_ini,
        set_nodes,

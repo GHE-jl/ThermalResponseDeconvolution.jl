@@ -3,26 +3,28 @@ using SpecialFunctions
 using PCHIPInterpolation
 using LinearAlgebra
 using Plots
+using GHEDeconvolutions
 
 function deconvolution(
-        t::Vector{T},
-        f::Vector{T},
-        temperature::Vector{T},
-        n::Int = 35,
-        c::Int = 2,
-        show_ini::Bool = false,
-        show_opt::Bool = false
-) where T<:Real
-    #=
+    t::Tuple{T},
+    f::Tuple{T},
+    temperature::Tuple{T},
+    n::Int=35,
+    c::Int=2,
+    show_ini::Bool=false,
+    show_opt::Bool=false
+) where {T<:Real}
+    """
+        deconvolution(t, f, T, n=35, c=2, show_ini=false, show_opt=false)
+    
     Optimization algorithm to perform deconvolution on the experimental data
     extracted from a TRT to recover a short-term g-function (STgF).The function
-    computes the estimated STgF and the estimated convolved
-    temperature variations.
+    computes the estimated STgF and the estimated convolved temperature variations.
     Inputs:
-      - t: Time array, starting at 0, with constant time step (see [1]) (s)
-      - f: Incremental perturbation function (see note [2] below) [degC, W, W/m]
-      - TExp: Experimental temperature variation (T_exp = T_out-T_0) [degC]
-      - [Optionnal Inputs]:
+        - t: Time array, starting at 0, with constant time step (see [1]) (s)
+        - f: Incremental perturbation function (see note [2] below) [degC, W, W/m]
+        - TExp: Experimental temperature variation (T_exp = T_out-T_0) [degC]
+        - [Optionnal Inputs]:
           - n: Number of nodes (default: 35)
           - c: Choice of constraints (default: 2):
               0: No constraint
@@ -32,8 +34,8 @@ function deconvolution(
          - show_opt: Display final guess figure (default: false)
     Outputs:
         - g: Interpolated estimated STgF obtained by deconvolution [-]
-       - T_conv: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
-       - [Optionnal Outputs]:
+        - T_conv: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
+        - [Optionnal Outputs]:
            - Time: Computing time to converge [s]
            - [Id,gOpt]: Node positions and optimized transfer function values
            - Out: Output variables of the solver [-]
@@ -45,7 +47,7 @@ function deconvolution(
      deconvolution to work effectively, because of how convolution works. Otherwise, these
      vectors must be interpolated.
      [2]: The input "f" is the time derivative of the perturbation function, which
-     can be $T_{in}-T_{out}$ [$^\circ$C], $Q$ [W] or $q$ [W/m]. The transfer function 
+     can be T_{in}-T_{out} [degC], Q [W] or q [W/m]. The transfer function 
      will be defined for the units of input used.
 
      Reference: Dion, G., Pasquier, P., & Marcotte, D. (2022). Deconvolution of
@@ -53,8 +55,8 @@ function deconvolution(
      Geothermics, 100, 102302. https://doi.org/10.1016/j.geothermics.2021.102302
 
      Author: Gabriel Dion
-     Date: 08-2024
-    =#
+     Date: 2024-11
+    """
 
     # 0. Data validation and Initialization
     g = similar(temperature)
@@ -90,7 +92,7 @@ function deconvolution(
         #TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
         g_0_opt,
         #IPNewton(),
-        #Optim.Options(; iterations = 1000, show_trace = true)
+        Optim.Options(; iterations = 1000, show_trace = true)
     )
 
     # 7. Final interpolation and convolution
@@ -99,14 +101,15 @@ function deconvolution(
     T_conv = convolution(f, ĝ)
 
     # 8. Plot final result
-    show_opt ? show_fig(t, f, g, T) : nothing
-    return g, T_conv, x_opt
+    show_opt ? show_fig(t, f, ĝ, T_conv) : nothing
+    return ĝ, T_conv, x_opt
 end
 
-function data_validation(t::Vector{Float64}, f::Vector{Float64}, T::Vector{Float64})
-    #=
-
-    =#
+function data_validation(t::Tuple{Float64}, f::Tuple{Float64}, T::Tuple{Float64})
+    """
+        data_validation(t, f, T)
+    Function that ensures that the data respect correct form.
+    """
 
     # Check if vectors are all the same length
     if length(t) != length(f) || length(t) != length(T)
@@ -126,9 +129,10 @@ function data_validation(t::Vector{Float64}, f::Vector{Float64}, T::Vector{Float
 end
 
 function option_validation(n, c, show_ini, show_opt)
-    #=
-
-    =#
+    """
+        option_validation(n, c, show_ini, show_opt)
+    Function that ensures that the optional inputs are correctly set for the deconvolution function.
+    """
     if n < 0
         error("number of nodes must be a positive integer.")
     elseif n < 15
@@ -151,8 +155,9 @@ function option_validation(n, c, show_ini, show_opt)
     end
 end
 
-function deconv_ini(idall::Vector{Int}, f::Vector{Float64}, temperature::Vector{Float64})
-    #= 
+function deconv_ini(idall::Tuple{Int}, f::Tuple{Float64}, temperature::Tuple{Float64})
+    """
+        deconv_ini(idall, f, temperature)
     Function that ajust an exponential integral equation to obtain a first approximation of
     the ground heat exchanger transfer function. The algorithm uses a convolution product
     to compute the objective function.
@@ -162,23 +167,27 @@ function deconv_ini(idall::Vector{Int}, f::Vector{Float64}, temperature::Vector{
         - temperature: Experimental temperature variation at the borehole outlet [degC]
     Output:
         - g_0: Initial guess of the transfer function based on an exponential integral [-]
-    =#
+    """
 
     # Define objective function (RMSE) between model and experimental values.
     function obj_fun(x)
+        """
+        Objective function: RMSE between experimental and computed temperatures.
+        """
         return sqrt(sum((convolution(f, x[1] .* expint.(x[2] ./ idall)) .-
-            (temperature .- temperature[1])) .^ 2) / length(idall))
+                         (temperature .- temperature[1])) .^ 2) / length(idall))
     end
 
     # Define the optimization on 2 variables
     x0 = [1.0, 1.0]
-    x_opt = optimize(obj_fun, x0, NelderMead(), Optim.Options(; show_trace = true))
+    x_opt = optimize(obj_fun, x0, NelderMead())
 
     return x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ idall)
 end
 
 function set_nodes(nt::Int, n0::Int)
-    #=
+    """
+        set_nodes(nt, n0)
     Function that sets the position of the nodes on the transfer function based on
     the number of nodes asked by the user.
     Inputs:
@@ -186,20 +195,21 @@ function set_nodes(nt::Int, n0::Int)
         - n0: User defined number of nodes on the transfer function [-]
     Output:
         - id: A vector of length "n" of node positions on the transfer function [-]
-    =#
+    """
 
     n_tmp = n0 - 1
     id = []
 
     while length(id) != n0
-        id = unique(round.(Int, exp10.(range(0, stop = log10(nt), length = n_tmp))))
+        id = unique(round.(Int, exp10.(range(0, stop=log10(nt), length=n_tmp))))
         n_tmp += 1
     end
     return id
 end
 
-function set_weights(g_0::Vector{Float64}, f::Vector{Float64}, temperature::Vector{Float64})
-    #=
+function set_weights(g_0::Tuple{Float64}, f::Tuple{Float64}, temperature::Tuple{Float64})
+    """
+        set_weights(g_0, f, temperature)
     Function that computes the weights of each term in the deconvolution objective function
     based on the weights obtained using the initial transfer function guess. The desired
     weights are so that e[1]~0.7, e[2]~0.15, e[3]~0.15.
@@ -211,7 +221,7 @@ function set_weights(g_0::Vector{Float64}, f::Vector{Float64}, temperature::Vect
         - w: Weights of each term in the objective function (3x1 vector) [-]
         - w_array: Array weights to emphazise the reconstruction of the transfer function's
             initial impulse. 
-    =#
+    """
 
     # Define proportion for terms in the objective function
     w_0 = [0.7, 0.15, 0.15]
@@ -237,8 +247,9 @@ function set_weights(g_0::Vector{Float64}, f::Vector{Float64}, temperature::Vect
     return w, w_array
 end
 
-function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
-    #=
+function const_derivative(t::Tuple{Float64}, id::Tuple{Int}, cnst::Int)
+    """
+        const_derivative(t, id, cnst)
     Set the linear inequality constraints for the problem Ax <= b used to constrain the
     deconvolution algorithm. There are two different constraints applied on the transfer 
     function:
@@ -255,25 +266,30 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
         - a: Linear inequality constraint matrix in Ax <= b of size (m x n), where "m" is
             the number of inequalities and "n" is the number of nodes (lenght(id)).
         - b: A constraint vector of (m x 1) in Ax <= b to respect in the optimization. 
-    =#
+    """
 
     # Input parameters
     n = length(id)
 
-    # First constraint: positive first derivative
+    # 
     function const_1(id, n)
+        """
+        First constraint: positive first derivative
+        """
         # Construct parameters
         e = ones(Float64, n)
         h = diff([0; id])
         # Build matrix and constraint vector
-        a1 = diagm(0 => -e, 1 => e[1:(n - 1)])
-        a1 = -a1[1:(end - 1), :] ./ h[1:(end - 1)]
+        a1 = diagm(0 => -e, 1 => e[1:(n-1)])
+        a1 = -a1[1:(end-1), :] ./ h[1:(end-1)]
         b1 = zeros(Float64, n - 1)
         return a1, b1
     end
 
-    # Second constraint: negative second derivative on a SpecialFunctions
     function const_2(t, id, n)
+        """
+        Second constraint: negative second derivative on a SpecialFunctions
+        """
         # Find time at around 3 hours of test
         if maximum(t) >= 3600 * 3
             id_nodes = argmin(abs.(3600 * 3 .- t[id]))
@@ -282,12 +298,12 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
         end
 
         # Construct the second derivative a2 and b2
-        c = @. (id[(id_nodes + 2):(end - 1)] - id[(id_nodes + 1):(end - 2)]) /
-               (id[(id_nodes + 1):(end - 2)] - id[id_nodes:(end - 3)])
+        c = @. (id[(id_nodes+2):(end-1)] - id[(id_nodes+1):(end-2)]) /
+               (id[(id_nodes+1):(end-2)] - id[id_nodes:(end-3)])
 
         a2 = zeros(n - 2 - id_nodes, n)
-        for ii in 1:(n - 2 - id_nodes)
-            a2[ii, (id_nodes + ii):(id_nodes + ii + 2)] = [c[ii], -(c[ii] .+ 1), 1.0]
+        for ii in 1:(n-2-id_nodes)
+            a2[ii, (id_nodes+ii):(id_nodes+ii+2)] = [c[ii], -(c[ii] .+ 1), 1.0]
         end
 
         b2 = zeros(Float64, n - 2 - id_nodes)
@@ -318,15 +334,16 @@ function const_derivative(t::Vector{Float64}, id::Vector{Int}, cnst::Int)
 end
 
 function obj_fun(
-        g_opt::Vector{Float64},
-        id::Vector{Int},
-        idall::Vector{Int},
-        f::Vector{Float64},
-        T::Vector{Float64},
-        w,
-        w_array
+    g_opt::Tuple{Float64},
+    id::Tuple{Int},
+    idall::Tuple{Int},
+    f::Tuple{Float64},
+    T::Tuple{Float64},
+    w,
+    w_array
 )
-    #=
+    """
+        obj_fun(g_opt, id, idall, f, T, w, w_array)
     Computes the multi-objective function that allows to optimize the position of nodes on
     the transfer function, so that experimental temperature are recreated.
     Inputs:
@@ -340,7 +357,7 @@ function obj_fun(
             initial impulse.
     Output:
         - sum(e): The value of the objective function to minimize by the deconvolution
-    =#
+    """
 
     # Interpolate the transfer function
     interp = Interpolator(id, g_opt)
@@ -358,83 +375,4 @@ function obj_fun(
     e[3] = w[3] .* sqrt((sum((ddg) .^ 2)) / nt)
 
     return sum(e)
-end
-
-function show_fig(t::Vector{Float64},
-    f::Vector{Float64},
-    g::Vector{Float64},
-    temperature::Vector{Float64}
-)
-    #= Function that prints results of a deconvolution process (either the initial results 
-    or the optimized one).
-    =#
-    
-    # Define the first plot with ĝ and ĝ'.
-    p1 = plot(
-        t / 3600 / 24,
-        g;
-        xaxis = "Time (d)",
-        yaxis = "ĝ (-)",
-        xscale = :log10,
-        linewidth = 1.5,
-        linestyle = :solid,
-        linecolor = :blue,
-        label = "ĝ",
-        legend = :topleft
-    )
-    p1 = plot!(
-        twinx(),
-        t / 3600 / 24,
-        diff([0; g]);
-        yaxis = "ĝ' (-)",
-        xscale = :log10,
-        yscale = :log10,
-        linewidth = 1.5,
-        linestyle = :dash,
-        linecolor = :black,
-        label = "ĝ'",
-        legend = :left
-    )
-    p1 = plot!(;
-        framestyle = :box,
-        grid = false,
-        xlabelfontsize = 8,
-        ylabelfontsize = 8,
-        xtickfontsize = 8,
-        ytickfontsize = 8,
-        legendfontsize = 8
-    )
-
-    # Define the second plot with the experimental and reconstructed temperature signals
-    p2 = plot(
-        t / 3600 / 24,
-        temperature;
-        linewidth = 1.5,
-        linestyle = :solid,
-        linecolor = :black,
-        label = "Reference"
-    )
-    p2 = plot!(
-        t / 3600 / 24,
-        convolution(f, g);
-        linewidth = 1.5,
-        linestyle = :dash,
-        linecolor = :cyan,
-        label = "Convolved"
-    )
-    p2 = plot!(;
-        framestyle = :box,
-        grid = false,
-        xlabel = "Time (d)",
-        ylabel = "Temperature (°C)",
-        xlabelfontsize = 8,
-        ylabelfontsize = 8,
-        xtickfontsize = 8,
-        ytickfontsize = 8,
-        legendfontsize = 8
-    )
-
-    # Join both plots and print them in a layout with adequate sizes
-    return display(plot(p1, p2; layout = (2, 1), size = (480, 340))) # ~[17cm,12cm]
-    #savefig("ExampleDeconv_fig.pdf")
 end
