@@ -2,8 +2,7 @@ using Optim, LineSearches
 using SpecialFunctions
 using PCHIPInterpolation
 using LinearAlgebra
-using Plots
-using GHEDeconvolutions
+#using GHEDeconvolutions
 
 function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     """
@@ -61,15 +60,12 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     id = Vector{Float64}(undef, n)
     g_0_id = similar(id)   
 
-    # 1. Initial parameters
-    nt = length(temperature)
-    idall = collect(1:nt)
-
+    # 2. Define the incremental impulse function (here as T_in-T_out)
     f = diff([0; data.Tin - data.Tout])
-    f_fft = []
+    f_fft = rfft(f,)
 
     # 2. Define nodes positions
-    id = set_nodes(nt, n)
+    id = set_nodes(length(temperature), n)
 
     # 3. Compute initial solution
     g_0 = deconv_ini(idall, f, temperature)
@@ -145,6 +141,10 @@ function option_validation(n, c)
     elseif !isinteger(c)
         error("optionnal constraints must be an integer.")
     end
+end
+
+function conv_g(f_fft, g)
+    
 end
 
 function deconv_ini(idall::Vector{Int}, f::Vector{Real}, temperature::Vector{Real})

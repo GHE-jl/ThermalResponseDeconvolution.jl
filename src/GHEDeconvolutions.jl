@@ -15,6 +15,9 @@ include("utils.jl")
 # Basic export
 export TRTData_import, convolution, deconvolution
 
+# Utils export
+export rms, show_fig
+
 # Optionnal export
 export data_validation,
        option_validation,
@@ -22,6 +25,5 @@ export data_validation,
        set_nodes,
        set_weights,
        const_derivative,
-       obj_fun,
-       show_fig
+       obj_fun
 end
