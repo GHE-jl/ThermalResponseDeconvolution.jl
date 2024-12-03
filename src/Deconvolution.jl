@@ -5,15 +5,7 @@ using LinearAlgebra
 using Plots
 using GHEDeconvolutions
 
-function deconvolution(
-    t::Tuple{T},
-    f::Tuple{T},
-    temperature::Tuple{T},
-    n::Int=35,
-    c::Int=2,
-    show_ini::Bool=false,
-    show_opt::Bool=false
-) where {T<:Real}
+function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     """
         deconvolution(t, f, T, n=35, c=2, show_ini=false, show_opt=false)
     
@@ -55,26 +47,33 @@ function deconvolution(
      Geothermics, 100, 102302. https://doi.org/10.1016/j.geothermics.2021.102302
 
      Author: Gabriel Dion
-     Date: 2024-11
+     Date: 2024-12
     """
 
-    # 0. Data validation and Initialization
-    g = similar(temperature)
-    T_conv = similar(temperature)
-    data_validation(t, f, temperature)
-    option_validation(n, c, show_ini, show_opt)
+    # 0. Data validation
+    data_validation(data::TRTData)
+    @time option_validation(n, c)
+
+    # 1. Preallocation
+    g_0 = similar(data.t)
+    g = similar(data.t)
+    T_conv = similar(data.t)
+    id = Vector{Float64}(undef, n)
+    g_0_id = similar(id)   
 
     # 1. Initial parameters
     nt = length(temperature)
     idall = collect(1:nt)
+
+    f = diff([0; data.Tin - data.Tout])
+    f_fft = []
 
     # 2. Define nodes positions
     id = set_nodes(nt, n)
 
     # 3. Compute initial solution
     g_0 = deconv_ini(idall, f, temperature)
-    show_ini ? show_fig(t, f, g_0, temperature) : nothing
-    g_0_opt = g_0[id]
+    g_0_id = g_0[id]
 
     # 4. Set weights for the multi-objective function
     w, w_array = set_weights(g_0, f, temperature)
@@ -90,9 +89,9 @@ function deconvolution(
     x_opt = optimize(
         (x) -> obj_fun(x, id, idall, f, temperature, w, w_array),
         #TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
-        g_0_opt,
+        g_0_id,
         #IPNewton(),
-        Optim.Options(; iterations = 1000, show_trace = true)
+        Optim.Options(; iterations=1000, show_trace=true)
     )
 
     # 7. Final interpolation and convolution
@@ -105,57 +104,50 @@ function deconvolution(
     return ĝ, T_conv, x_opt
 end
 
-function data_validation(t::Tuple{Float64}, f::Tuple{Float64}, T::Tuple{Float64})
+function data_validation(data::TRTData)
     """
-        data_validation(t, f, T)
-    Function that ensures that the data respect correct form.
+        data_validation(data)
+    
+    Function that ensures that the input data respect correct form. The input is based on the
+    structure constructed with the TRT dataset.
     """
 
-    # Check if vectors are all the same length
-    if length(t) != length(f) || length(t) != length(T)
-        error("inputs are not of the same lengths.")
-
-        # Check for imaginary, NaN or infinite value
-    elseif any(!isreal, t) || any(!isreal, f) || any(!isreal, T)
+    # Check for imaginary, NaN or infinite value
+    if any(!isreal(getfield(data, field)) for field in fieldnames(typeof(data)))
         error("inputs contain imaginary values.")
-
         # Check for NaN values
-    elseif any(isnan, t) || any(isnan, f) || any(isnan, T)
+    elseif any(isnan.(getfield(data, field)) for field in fieldnames(typeof(data)) if fieldtype(typeof(data), field) <: AbstractFloat)
         error("inputs contains NaN values.")
         # Check for NaN values
-    elseif any(isinf, t) || any(isinf, f) || any(isinf, T)
+    elseif any(isinf(getfield(data, field)) for field in fieldnames(typeof(data)) if fieldtype(typeof(data), field) <: AbstractFloat)
         error("inputs contains infinite values.")
     end
 end
 
-function option_validation(n, c, show_ini, show_opt)
+function option_validation(n, c)
     """
         option_validation(n, c, show_ini, show_opt)
+    
     Function that ensures that the optional inputs are correctly set for the deconvolution function.
     """
+    # Checking on the number of nodes
     if n < 0
         error("number of nodes must be a positive integer.")
-    elseif n < 15
-        @warn println(
-            "the number of nodes should be at least larger than 20, ideally 30 to 60."
-        )
+    elseif n <= 15
+        @warn "the number of nodes should be larger than 20, ideally between 30 to 60"
     elseif n > 100
-        @warn println(
-            "the number of nodes is large (>100) and should be arount 60 at the maximum."
-        )
-    elseif c < 0 || c > 2
+        @warn "the number of nodes is large (>100). It should be between 30 and 60"
+    end
+
+    # Checking on the constraint selection
+    if c < 0 || c > 2
         error("optionnal input for constraints must be 0, 1 or 2.")
     elseif !isinteger(c)
         error("optionnal constraints must be an integer.")
-        # elseif tol #TODO: when I have the optimization, add constraints for this
-    elseif typeof(show_ini) != Bool
-        error("input either `true` or `false` to show or not the initial fit figure.")
-    elseif typeof(show_opt) != Bool
-        error("input either `true` or `false` to show or not the optimized fit figure.")
     end
 end
 
-function deconv_ini(idall::Tuple{Int}, f::Tuple{Float64}, temperature::Tuple{Float64})
+function deconv_ini(idall::Vector{Int}, f::Vector{Real}, temperature::Vector{Real})
     """
         deconv_ini(idall, f, temperature)
     Function that ajust an exponential integral equation to obtain a first approximation of
@@ -207,9 +199,10 @@ function set_nodes(nt::Int, n0::Int)
     return id
 end
 
-function set_weights(g_0::Tuple{Float64}, f::Tuple{Float64}, temperature::Tuple{Float64})
+function set_weights(g_0::Vector{T}, f::Vector{T}, temperature::Vector{T}) where {T<:Real}
     """
         set_weights(g_0, f, temperature)
+    
     Function that computes the weights of each term in the deconvolution objective function
     based on the weights obtained using the initial transfer function guess. The desired
     weights are so that e[1]~0.7, e[2]~0.15, e[3]~0.15.
@@ -247,7 +240,7 @@ function set_weights(g_0::Tuple{Float64}, f::Tuple{Float64}, temperature::Tuple{
     return w, w_array
 end
 
-function const_derivative(t::Tuple{Float64}, id::Tuple{Int}, cnst::Int)
+function const_derivative(t::Vector{Real}, id::Vector{Int}, cnst::Int)
     """
         const_derivative(t, id, cnst)
     Set the linear inequality constraints for the problem Ax <= b used to constrain the
@@ -334,11 +327,11 @@ function const_derivative(t::Tuple{Float64}, id::Tuple{Int}, cnst::Int)
 end
 
 function obj_fun(
-    g_opt::Tuple{Float64},
-    id::Tuple{Int},
-    idall::Tuple{Int},
-    f::Tuple{Float64},
-    T::Tuple{Float64},
+    g_opt::Vector{Real},
+    id::Vector{Int},
+    idall::Vector{Int},
+    f::Vector{Real},
+    T::Vector{Real},
     w,
     w_array
 )

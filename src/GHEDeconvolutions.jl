@@ -7,15 +7,16 @@ of the system (i.e., GHE) only from experimental data.
 module GHEDeconvolutions
 
 # Other files to include in the package
+include("TRTData.jl")
 include("Convolution.jl")
 include("Deconvolution.jl")
 include("utils.jl")
 
 # Basic export
-export convolution, deconvolution 
+export TRTData_import, convolution, deconvolution
 
 # Optionnal export
-public data_validation,
+export data_validation,
        option_validation,
        deconv_ini,
        set_nodes,
