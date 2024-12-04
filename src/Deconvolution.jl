@@ -1,8 +1,7 @@
-using Optim, LineSearches
-using SpecialFunctions
+using Optim
 using PCHIPInterpolation
 using LinearAlgebra
-#using GHEDeconvolutions
+using GHEDeconvolutions
 
 function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     """
@@ -51,37 +50,35 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
 
     # 0. Data validation
     data_validation(data::TRTData)
-    @time option_validation(n, c)
+    option_validation(n, c)
 
     # 1. Preallocation
     g_0 = similar(data.t)
     g = similar(data.t)
     T_conv = similar(data.t)
-    id = Vector{Float64}(undef, n)
-    g_0_id = similar(id)   
 
-    # 2. Define the incremental impulse function (here as T_in-T_out)
-    f = diff([0; data.Tin - data.Tout])
-    f_fft = rfft(f,)
+    # 2. Prepare the incremental impulse function (here as T_in-T_out)
+    f_fft = define_f(data::TRTData)
 
-    # 2. Define nodes positions
-    id = set_nodes(length(temperature), n)
+    # 3. Define nodes positions
+    id = set_nodes(length(data.t), n)
+    g_0_id = similar(id)
 
-    # 3. Compute initial solution
-    g_0 = deconv_ini(idall, f, temperature)
-    g_0_id = g_0[id]
+    # 4. Compute initial solution
+    deconv_ini!(g_0, data, f_fft)
+    copyto!(g_0_id, g_0[id])
 
-    # 4. Set weights for the multi-objective function
+    # 5. Set weights for the multi-objective function
     w, w_array = set_weights(g_0, f, temperature)
 
-    # 5. Set linear inequality constraints and bounds
+    # 6. Set linear inequality constraints and bounds
     lb = zeros(n, 1)
 
     a, b = const_derivative(t, id, c)
     # Note: Usually, the 2 constraints give best results. Either using 1 or 0 constraints
     # may be usefull in some cases.
 
-    # 6. Optimization
+    # 7. Optimization
     x_opt = optimize(
         (x) -> obj_fun(x, id, idall, f, temperature, w, w_array),
         #TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
@@ -90,13 +87,12 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
         Optim.Options(; iterations=1000, show_trace=true)
     )
 
-    # 7. Final interpolation and convolution
+    # 8. Final interpolation and convolution
     interp = Interpolator(id, x_opt.minimizer)
     ĝ = interp.(idall)
     T_conv = convolution(f, ĝ)
 
-    # 8. Plot final result
-    show_opt ? show_fig(t, f, ĝ, T_conv) : nothing
+    # 8. Function outputs
     return ĝ, T_conv, x_opt
 end
 
@@ -122,7 +118,7 @@ end
 
 function option_validation(n, c)
     """
-        option_validation(n, c, show_ini, show_opt)
+        option_validation(n, c)
     
     Function that ensures that the optional inputs are correctly set for the deconvolution function.
     """
@@ -143,13 +139,62 @@ function option_validation(n, c)
     end
 end
 
-function conv_g(f_fft, g)
-    
+function define_f(data::TRTData)
+    f = diff([0; data.Tin - data.Tout])
+    f_pad = zeros(Float64, 2 * length(data.t) - 1)
+    copyto!(f_pad, f)
+    fft_plan = plan_rfft(f_pad)
+    F_f = fft_plan * f_pad
+    return f_FFT(f, f_pad, fft_plan, F_f)
 end
 
-function deconv_ini(idall::Vector{Int}, f::Vector{Real}, temperature::Vector{Real})
+function set_nodes(nt::Int, n0::Int)
     """
-        deconv_ini(idall, f, temperature)
+        set_nodes(nt, n0)
+    Function that sets the position of the nodes on the transfer function based on
+    the number of nodes asked by the user.
+    Inputs:
+        - nt: Total number of data in the input vectors [-]
+        - n0: User defined number of nodes on the transfer function [-]
+    Output:
+        - id: A vector of length "n" of node positions on the transfer function [-]
+    """
+
+    n_tmp = n0 - 1
+    id = Vector{Integer}(undef, n_tmp)
+
+    while length(id) != n0
+        id = unique(round.(Int, exp10.(range(0, stop=log10(nt), length=n_tmp))))
+        n_tmp += 1
+    end
+    return id
+end
+
+function convolution_g(f_fft, g)
+    """
+        convolution_g(f_pad, fft_plan, F_f, g)
+
+    Function that convolves an already prepared vector "f" to the transfer function "g" in the
+    spectral domain.
+    """
+    n_full = length(f_fft.f_pad)
+    # Prepare the transfer function
+    g_pad = zeros(Float64, n_full)
+    copyto!(g_pad, g)
+    F_g = f_fft.fft_plan * g_pad
+
+    # Element-wise multiplication (in-place)
+    F_g .*= f_fft.F_f
+
+    # Inverse FFT to get convolution resuls
+    y = irfft(F_g, n_full)
+    return @view y[1:length(f_fft.f)]
+end
+
+function deconv_ini!(g_0::Vector{Float64}, data::TRTData, f_fft)
+    """
+        deconv_ini!(g_0, data, f_fft)
+    
     Function that ajust an exponential integral equation to obtain a first approximation of
     the ground heat exchanger transfer function. The algorithm uses a convolution product
     to compute the objective function.
@@ -166,42 +211,18 @@ function deconv_ini(idall::Vector{Int}, f::Vector{Real}, temperature::Vector{Rea
         """
         Objective function: RMSE between experimental and computed temperatures.
         """
-        return sqrt(sum((convolution(f, x[1] .* expint.(x[2] ./ idall)) .-
-                         (temperature .- temperature[1])) .^ 2) / length(idall))
+        return rms(convolution_g(f_fft, x[1] .* expint.(x[2] ./ data.t)) .- data.Texp)
     end
 
     # Define the optimization on 2 variables
     x0 = [1.0, 1.0]
-    x_opt = optimize(obj_fun, x0, NelderMead())
-
-    return x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ idall)
+    x_opt = optimize(obj_fun, x0)
+    g_0 .= x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ data.t)
 end
 
-function set_nodes(nt::Int, n0::Int)
+function set_weights(g_0::Vector{Float64}, data::TRTData, f_fft::f_FFT)
     """
-        set_nodes(nt, n0)
-    Function that sets the position of the nodes on the transfer function based on
-    the number of nodes asked by the user.
-    Inputs:
-        - nt: Total number of data in the input vectors [-]
-        - n0: User defined number of nodes on the transfer function [-]
-    Output:
-        - id: A vector of length "n" of node positions on the transfer function [-]
-    """
-
-    n_tmp = n0 - 1
-    id = []
-
-    while length(id) != n0
-        id = unique(round.(Int, exp10.(range(0, stop=log10(nt), length=n_tmp))))
-        n_tmp += 1
-    end
-    return id
-end
-
-function set_weights(g_0::Vector{T}, f::Vector{T}, temperature::Vector{T}) where {T<:Real}
-    """
-        set_weights(g_0, f, temperature)
+        set_weights(g_0, data, f_fft)
     
     Function that computes the weights of each term in the deconvolution objective function
     based on the weights obtained using the initial transfer function guess. The desired
@@ -226,16 +247,16 @@ function set_weights(g_0::Vector{T}, f::Vector{T}, temperature::Vector{T}) where
     # Compute each terms of the objective function
     nt = length(g_0)
     e = zeros(3)
-    e[1] = sqrt((sum((convolution(f, g_0) - temperature) .^ 2)) / nt)
-    e[2] = sqrt((sum((dg_0) .^ 2)) / nt)
-    e[3] = sqrt((sum((ddg_0) .^ 2)) / nt)
+    e[1] = rms(convolution_g(f_fft, g_0) - data.Texp)
+    e[2] = rms(dg_0 .^ 2)
+    e[3] = rms(ddg_0 .^ 2)
 
     # Define the objective functions weights
-    prop = w_0 / sum(e)
-    w = w_0 / prop
+    prop = w_0 ./ sum(e)
+    w = w_0 ./ prop
 
     # Set array weight
-    w_array = [3 * ones(trunc(Int, nt * 0.05)); ones(trunc(Int, nt * 0.95))]
+    w_array = [3 * ones(round(Int, nt * 0.05)); ones(round(Int, nt * 0.95))]
 
     return w, w_array
 end
@@ -264,7 +285,6 @@ function const_derivative(t::Vector{Real}, id::Vector{Int}, cnst::Int)
     # Input parameters
     n = length(id)
 
-    # 
     function const_1(id, n)
         """
         First constraint: positive first derivative
@@ -368,4 +388,11 @@ function obj_fun(
     e[3] = w[3] .* sqrt((sum((ddg) .^ 2)) / nt)
 
     return sum(e)
+end
+
+struct f_FFT
+    f::Vector{Float64}      # Incremental load function
+    f_pad::Vector{Float64}  # Padded incremental load function
+    fft_plan                # Plan of FFT for optimized computation afterwards
+    F_f                     # Frequency domain of the incremental load function
 end

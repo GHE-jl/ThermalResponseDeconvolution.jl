@@ -13,18 +13,14 @@ using Revise
 function main()
 
     # Import synthetic data
-    DATA = CSV.read("Data/Data.csv", DataFrame)
-    G = CSV.read("Data/gRef.csv", DataFrame)
-
-    t = DATA[:, 1]
-    temperature_in = DATA[:, 2]
-    temperature_out = DATA[:, 3]
-    temperature_exp = temperature_out .- temperature_out[1]
+    data = TRTData_import("data/DataCL_TRT.csv")
+    gG = CSV.read("data/gNumCL.csv", DataFrame, skipto=6)
+    DATA = CSV.read("data/data.csv", DataFrame)
+    G = CSV.read("data/gRef.csv", DataFrame)
     g_ref = G[:, 2]
 
     # Deconvolution algorithm
-    f = diff([0; temperature_in - temperature_out])
-    g = deconvolution(t, f, temperature_exp, 35, 2, 1e-6, true)
+    g = deconvolution(data, 35, 2)
 
     return println("Done")
 end

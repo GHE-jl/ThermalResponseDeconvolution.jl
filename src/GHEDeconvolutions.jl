@@ -18,11 +18,16 @@ export TRTData_import, convolution, deconvolution
 # Utils export
 export rms, show_fig
 
+# Structures of data
+export TRTData, f_FFT
+
 # Optionnal export
 export data_validation,
        option_validation,
-       deconv_ini,
+       define_f,
        set_nodes,
+       convolution_g,
+       deconv_ini!,
        set_weights,
        const_derivative,
        obj_fun

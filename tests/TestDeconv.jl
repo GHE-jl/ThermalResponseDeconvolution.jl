@@ -14,7 +14,7 @@ function main()
     #G = CSV.read("Data/gNumCL.csv", DataFrame)
 
     # Deconvolution algorithm    
-    g = deconvolution(data, 35, 2, true, true)
+    g = deconvolution(data, 35, 2)
 
     return println("Done")
 end
