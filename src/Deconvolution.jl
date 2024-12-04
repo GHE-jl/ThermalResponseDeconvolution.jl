@@ -49,7 +49,7 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     """
 
     # 0. Data validation
-    data_validation(data::TRTData)
+    data_validation(data)
     option_validation(n, c)
 
     # 1. Preallocation
@@ -58,7 +58,7 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     T_conv = similar(data.t)
 
     # 2. Prepare the incremental impulse function (here as T_in-T_out)
-    f_fft = define_f(data::TRTData)
+    f_fft = define_f(data)
 
     # 3. Define nodes positions
     id = set_nodes(length(data.t), n)
@@ -72,7 +72,7 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     w, w_array = set_weights(g_0, f, temperature)
 
     # 6. Set linear inequality constraints and bounds
-    lb = zeros(n, 1)
+    lb = fill(0.0, n)
 
     a, b = const_derivative(t, id, c)
     # Note: Usually, the 2 constraints give best results. Either using 1 or 0 constraints
@@ -170,7 +170,7 @@ function set_nodes(nt::Int, n0::Int)
     return id
 end
 
-function convolution_g(f_fft, g)
+function convolution_g(f_fft::f_FFT, g::Vector{Float64})
     """
         convolution_g(f_pad, fft_plan, F_f, g)
 
@@ -191,7 +191,7 @@ function convolution_g(f_fft, g)
     return @view y[1:length(f_fft.f)]
 end
 
-function deconv_ini!(g_0::Vector{Float64}, data::TRTData, f_fft)
+function deconv_ini!(g_0::Vector{Float64}, data::TRTData, f_fft::f_FFT)
     """
         deconv_ini!(g_0, data, f_fft)
     
@@ -208,9 +208,7 @@ function deconv_ini!(g_0::Vector{Float64}, data::TRTData, f_fft)
 
     # Define objective function (RMSE) between model and experimental values.
     function obj_fun(x)
-        """
-        Objective function: RMSE between experimental and computed temperatures.
-        """
+        """Objective function: RMSE between experimental and computed temperatures."""
         return rms(convolution_g(f_fft, x[1] .* expint.(x[2] ./ data.t)) .- data.Texp)
     end
 
@@ -261,7 +259,7 @@ function set_weights(g_0::Vector{Float64}, data::TRTData, f_fft::f_FFT)
     return w, w_array
 end
 
-function const_derivative(t::Vector{Real}, id::Vector{Int}, cnst::Int)
+function const_derivative(t::Vector{Float64}, id::Vector{Integer}, cnst::Int)
     """
         const_derivative(t, id, cnst)
     Set the linear inequality constraints for the problem Ax <= b used to constrain the
@@ -285,7 +283,7 @@ function const_derivative(t::Vector{Real}, id::Vector{Int}, cnst::Int)
     # Input parameters
     n = length(id)
 
-    function const_1(id, n)
+    function const_1(id::Vector{Integer}, n::Int)
         """
         First constraint: positive first derivative
         """
@@ -299,7 +297,7 @@ function const_derivative(t::Vector{Real}, id::Vector{Int}, cnst::Int)
         return a1, b1
     end
 
-    function const_2(t, id, n)
+    function const_2(t::Vector{Float64}, id::Vector{Integer}, n::Int)
         """
         Second constraint: negative second derivative on a SpecialFunctions
         """
@@ -346,11 +344,7 @@ function const_derivative(t::Vector{Real}, id::Vector{Int}, cnst::Int)
     return a, b
 end
 
-function obj_fun(
-    g_opt::Vector{Real},
-    id::Vector{Int},
-    idall::Vector{Int},
-    f::Vector{Real},
+function obj_fun(g_opt::Vector{Real}, id::Vector{Int}, idall::Vector{Int}, f::Vector{Real},
     T::Vector{Real},
     w,
     w_array
@@ -388,11 +382,4 @@ function obj_fun(
     e[3] = w[3] .* sqrt((sum((ddg) .^ 2)) / nt)
 
     return sum(e)
-end
-
-struct f_FFT
-    f::Vector{Float64}      # Incremental load function
-    f_pad::Vector{Float64}  # Padded incremental load function
-    fft_plan                # Plan of FFT for optimized computation afterwards
-    F_f                     # Frequency domain of the incremental load function
 end

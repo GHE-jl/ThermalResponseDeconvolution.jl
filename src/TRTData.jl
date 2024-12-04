@@ -24,11 +24,3 @@ function TRTData_import(filepath::String)
     data = TRTData(DATA[:, 1], DATA[:, 2], DATA[:, 3], DATA[:, 4], DATA[:, 4] .- DATA[1, 4])
     return data
 end
-
-struct TRTData
-    t::Vector{Float64}      # Time array [s]
-    Q::Vector{Float64}      # Heating power [W]
-    Tin::Vector{Float64}    # Inlet fluid temperature [degC]
-    Tout::Vector{Float64}   # Outlet fluid temperature [degC]
-    Texp::Vector{Float64}   # Experimental temperature to deconvolve [degC]
-end
