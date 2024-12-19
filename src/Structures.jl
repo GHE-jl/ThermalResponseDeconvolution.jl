@@ -16,3 +16,25 @@ struct f_FFT
     fft_plan                # Plan of FFT for optimized computation afterwards
     F_f                     # Frequency domain of the incremental load function
 end
+
+struct deconv_optim₀
+    data::TRTData
+    f_fft::f_FFT
+end
+
+mutable struct deconv_obj
+    g::Vector{Float64}
+    dg::Vector{Float64}
+    ddg::Vector{Float64}
+    e::Vector{Float64}
+end
+
+struct deconv_optim
+    data::TRTData
+    id::Vector{Integer}
+    f_fft::f_FFT
+    w::Vector{Float64}
+    wₐ::Vector{Float64}
+    cnst::Integer
+    objfun::deconv_obj
+end

@@ -2,6 +2,8 @@
 Script that includes some general functions used throughout the pagkage.
 """
 
+using Plots
+
 function rms(x::Vector{T} where {T<:Real})
     rmse = sqrt(sum(y^2 for y in x) / length(x))
     return rmse
@@ -10,7 +12,7 @@ end
 function show_fig(t::Vector{Float64},
     f::Vector{Float64},
     g::Vector{Float64},
-    temperature::Vector{Float64}
+    temperature::AbstractVector{Float64}
 )
     """ Function that prints results of a deconvolution process (either the initial results 
     or the optimized one).

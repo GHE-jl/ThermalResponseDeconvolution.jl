@@ -1,9 +1,11 @@
-using Optim
+using Optimization, OptimizationOptimJL
+using SpecialFunctions
 using PCHIPInterpolation
 using LinearAlgebra
+
 using GHEDeconvolutions
 
-function deconvolution(data::TRTData; n::Int=35, c::Int=2)
+function deconvolution(data::TRTData; n::T=35, c::T=2) where {T<:Integer}
     """
         deconvolution(t, f, T, n=35, c=2, show_ini=false, show_opt=false)
     
@@ -53,47 +55,49 @@ function deconvolution(data::TRTData; n::Int=35, c::Int=2)
     option_validation(n, c)
 
     # 1. Preallocation
-    g_0 = similar(data.t)
-    g = similar(data.t)
-    T_conv = similar(data.t)
+    g₀ = similar(data.t)
+    g₀i = Vector{Float64}(undef, n)
+    ĝ = similar(data.t)
+    T̂ = similar(data.t)
 
     # 2. Prepare the incremental impulse function (here as T_in-T_out)
     f_fft = define_f(data)
 
     # 3. Define nodes positions
     id = set_nodes(length(data.t), n)
-    g_0_id = similar(id)
 
     # 4. Compute initial solution
-    deconv_ini!(g_0, data, f_fft)
-    copyto!(g_0_id, g_0[id])
+    p₀ = deconv_optim₀(data, f_fft)
+    deconv_ini!(g₀, p₀)
+    show_fig(data.t, f_fft.f, g₀, convolution_g(f_fft, g₀))
+    copyto!(g₀i, g₀[id])
+    println(g₀i)
 
     # 5. Set weights for the multi-objective function
-    w, w_array = set_weights(g_0, f, temperature)
-
-    # 6. Set linear inequality constraints and bounds
-    lb = fill(0.0, n)
-
-    a, b = const_derivative(t, id, c)
-    # Note: Usually, the 2 constraints give best results. Either using 1 or 0 constraints
-    # may be usefull in some cases.
+    w, wₐ = set_weights(g₀, data, f_fft)
 
     # 7. Optimization
-    x_opt = optimize(
-        (x) -> obj_fun(x, id, idall, f, temperature, w, w_array),
-        #TwiceDifferentiableConstraints(a, b, lb, fill(Inf, length(lb))),
-        g_0_id,
-        #IPNewton(),
-        Optim.Options(; iterations=1000, show_trace=true)
-    )
+
+    # Initialize parameters
+    obj_val = deconv_obj()
+    p = deconv_optim(data, id, f_fft, w, wₐ, c, obj_val)
+    opt_fun = OptimizationFunction(obj_fun, Optimization.AutoForwardDiff(),
+        cons=const_derivative)
+    prob = OptimizationProblem(opt_fun, g₀i, p,
+        lb = fill(0.0, n),
+        ub=fill(Inf, n),
+        lcons = fill(-Inf, n),
+        ucons = fill(0.0, n))
+    sol = solve(prob, Optimization.LBFGS())
 
     # 8. Final interpolation and convolution
-    interp = Interpolator(id, x_opt.minimizer)
-    ĝ = interp.(idall)
-    T_conv = convolution(f, ĝ)
+    interp = Interpolator(id, value(sol.u))
+    ĝ = interp.(data.t)
+    T̂ = convolution_g(f_fft, ĝ)
+    show_fig(data.t, f_fft.f, ĝ, T̂)
 
-    # 8. Function outputs
-    return ĝ, T_conv, x_opt
+    # 9. Function outputs
+    return ĝ, T̂
 end
 
 function data_validation(data::TRTData)
@@ -164,7 +168,7 @@ function set_nodes(nt::Int, n0::Int)
     id = Vector{Integer}(undef, n_tmp)
 
     while length(id) != n0
-        id = unique(round.(Int, exp10.(range(0, stop=log10(nt), length=n_tmp))))
+        id = unique(round.(Integer, exp10.(range(0, stop=log10(nt), length=n_tmp))))
         n_tmp += 1
     end
     return id
@@ -191,9 +195,9 @@ function convolution_g(f_fft::f_FFT, g::Vector{Float64})
     return @view y[1:length(f_fft.f)]
 end
 
-function deconv_ini!(g_0::Vector{Float64}, data::TRTData, f_fft::f_FFT)
+function deconv_ini!(g₀::Vector{Float64}, p₀::deconv_optim₀)
     """
-        deconv_ini!(g_0, data, f_fft)
+        deconv_ini!(g₀, p₀)
     
     Function that ajust an exponential integral equation to obtain a first approximation of
     the ground heat exchanger transfer function. The algorithm uses a convolution product
@@ -203,63 +207,68 @@ function deconv_ini!(g_0::Vector{Float64}, data::TRTData, f_fft::f_FFT)
         - f: Incremental perturbation function [degC, W, W/m]
         - temperature: Experimental temperature variation at the borehole outlet [degC]
     Output:
-        - g_0: Initial guess of the transfer function based on an exponential integral [-]
+        - g₀: Initial guess of the transfer function based on an exponential integral [-]
     """
 
     # Define objective function (RMSE) between model and experimental values.
-    function obj_fun(x)
+    function obj_fun_ini(x::Vector{Float64}, p₀::deconv_optim₀)
         """Objective function: RMSE between experimental and computed temperatures."""
-        return rms(convolution_g(f_fft, x[1] .* expint.(x[2] ./ data.t)) .- data.Texp)
+        return rms(convolution_g(p₀.f_fft, x[1] .* -expinti.(-x[2] ./ p₀.data.t)) .- 
+            p₀.data.Texp)
     end
 
     # Define the optimization on 2 variables
-    x0 = [1.0, 1.0]
-    x_opt = optimize(obj_fun, x0)
-    g_0 .= x_opt.minimizer[1] .* expint.(x_opt.minimizer[2] ./ data.t)
+    x₀ = [1.0, 1.0]
+    obj_fun₀ = OptimizationFunction(obj_fun_ini, Optimization.AutoForwardDiff())
+    prob = OptimizationProblem(obj_fun₀, x₀, p₀)
+    sol = solve(prob, Optim.NelderMead(), g_tol = 1e-3)
+    g₀ .= sol.u[1] .* -expinti.(-sol.u[2] ./ p₀.data.t)
+    println("Solved ini: ",sol.u)
+    return g₀
 end
 
-function set_weights(g_0::Vector{Float64}, data::TRTData, f_fft::f_FFT)
+function set_weights(g₀::Vector{Float64}, data::TRTData, f_fft::f_FFT)
     """
-        set_weights(g_0, data, f_fft)
+        set_weights(g₀, data, f_fft)
     
     Function that computes the weights of each term in the deconvolution objective function
     based on the weights obtained using the initial transfer function guess. The desired
     weights are so that e[1]~0.7, e[2]~0.15, e[3]~0.15.
     Inputs:
-        - g_0: Initial transfer function guess based on an exponential integral [-]
+        - g₀: Initial transfer function guess based on an exponential integral [-]
         - f: Incremental perturbation function [degC, W, W/m]
         - temperature: Experimental temperature variation at the borehole outlet [degC]
     Outputs:
         - w: Weights of each term in the objective function (3x1 vector) [-]
-        - w_array: Array weights to emphazise the reconstruction of the transfer function's
+        - wₐ: Array weights to emphazise the reconstruction of the transfer function's
             initial impulse. 
     """
 
     # Define proportion for terms in the objective function
-    w_0 = [0.7, 0.15, 0.15]
+    w₀ = [0.7, 0.15, 0.15]
 
     # Compute initial transfer functionn derivatives
-    dg_0 = diff([0; g_0])
-    ddg_0 = diff(diff([0; g_0]))
+    dg₀ = diff([0; g₀])
+    ddg₀ = diff(diff([0; g₀]))
 
     # Compute each terms of the objective function
-    nt = length(g_0)
+    nt = length(g₀)
     e = zeros(3)
-    e[1] = rms(convolution_g(f_fft, g_0) - data.Texp)
-    e[2] = rms(dg_0 .^ 2)
-    e[3] = rms(ddg_0 .^ 2)
+    e[1] = rms(convolution_g(f_fft, g₀) - data.Texp)
+    e[2] = rms(dg₀ .^ 2)
+    e[3] = rms(ddg₀ .^ 2)
 
     # Define the objective functions weights
-    prop = w_0 ./ sum(e)
-    w = w_0 ./ prop
+    prop = w₀ ./ sum(e)
+    w = w₀ ./ prop
 
     # Set array weight
-    w_array = [3 * ones(round(Int, nt * 0.05)); ones(round(Int, nt * 0.95))]
+    wₐ = [3 * ones(round(Int, nt * 0.05)); ones(round(Int, nt * 0.95))]
 
-    return w, w_array
+    return w, wₐ
 end
 
-function const_derivative(t::Vector{Float64}, id::Vector{Integer}, cnst::Int)
+function const_derivative(res::Vector{Float64}, x::Vector{Float64}, p::deconv_optim)
     """
         const_derivative(t, id, cnst)
     Set the linear inequality constraints for the problem Ax <= b used to constrain the
@@ -280,16 +289,13 @@ function const_derivative(t::Vector{Float64}, id::Vector{Integer}, cnst::Int)
         - b: A constraint vector of (m x 1) in Ax <= b to respect in the optimization. 
     """
 
-    # Input parameters
-    n = length(id)
-
-    function const_1(id::Vector{Integer}, n::Int)
+    function const_1(p::deconv_optim, n::Integer)
         """
         First constraint: positive first derivative
         """
         # Construct parameters
         e = ones(Float64, n)
-        h = diff([0; id])
+        h = diff([0; p.id])
         # Build matrix and constraint vector
         a1 = diagm(0 => -e, 1 => e[1:(n-1)])
         a1 = -a1[1:(end-1), :] ./ h[1:(end-1)]
@@ -297,20 +303,20 @@ function const_derivative(t::Vector{Float64}, id::Vector{Integer}, cnst::Int)
         return a1, b1
     end
 
-    function const_2(t::Vector{Float64}, id::Vector{Integer}, n::Int)
+    function const_2(p::deconv_optim, n::Integer)
         """
         Second constraint: negative second derivative on a SpecialFunctions
         """
         # Find time at around 3 hours of test
-        if maximum(t) >= 3600 * 3
-            id_nodes = argmin(abs.(3600 * 3 .- t[id]))
+        if maximum(p.t) >= 3600 * 3
+            id_nodes = argmin(abs.(3600 * 3 .- p.data.t[p.id]))
         else
             id_nodes = 0
         end
 
         # Construct the second derivative a2 and b2
-        c = @. (id[(id_nodes+2):(end-1)] - id[(id_nodes+1):(end-2)]) /
-               (id[(id_nodes+1):(end-2)] - id[id_nodes:(end-3)])
+        c = @. (p.id[(id_nodes+2):(end-1)] - p.id[(id_nodes+1):(end-2)]) /
+               (p.id[(id_nodes+1):(end-2)] - p.id[id_nodes:(end-3)])
 
         a2 = zeros(n - 2 - id_nodes, n)
         for ii in 1:(n-2-id_nodes)
@@ -321,15 +327,18 @@ function const_derivative(t::Vector{Float64}, id::Vector{Integer}, cnst::Int)
         return a2, b2
     end
 
+    # Input parameters
+    n = length(p.id)
+
     # Setting output constraints depending on the optional input `c`
-    if cnst == 2
-        a1, b1 = const_1(id, n)
-        a2, b2 = const_2(t, id, n)
+    if p.cnst == 2
+        a1, b1 = const_1(p, n)
+        a2, b2 = const_2(p, n)
         a = [a1; a2]
         b = [b1; b2]
     elseif cnst == 1
-        a, b = const_1(id, n)
-    elseif cnst == 0
+        a, b = const_1(p.id, n)
+    elseif p.cnst == 0
         a = []
         b = []
     else
@@ -340,46 +349,40 @@ function const_derivative(t::Vector{Float64}, id::Vector{Integer}, cnst::Int)
     if any(isnan, a) || any(isnan, b)
         error("Presence of NaN in the output.")
     end
-
-    return a, b
+    return res .= a * x .- b
 end
 
-function obj_fun(g_opt::Vector{Real}, id::Vector{Int}, idall::Vector{Int}, f::Vector{Real},
-    T::Vector{Real},
-    w,
-    w_array
-)
+function obj_fun(ĝ::Vector{Float64},
+    p::deconv_optim)
     """
-        obj_fun(g_opt, id, idall, f, T, w, w_array)
+        obj_fun(ĝ, id, data, f_fft, w, wₐ)
+    
     Computes the multi-objective function that allows to optimize the position of nodes on
     the transfer function, so that experimental temperature are recreated.
     Inputs:
-        - g_opt: The noded transfer function that is being iterated on [-]
+        - ĝ: The noded transfer function that is being iterated on [-]
         - id: Nodes position on the transfer function [-]
         - idall: Numerized time vector [-]
         - f: Incremental perturbation function [degC, W, W/m]
         - T: Experimental temperature variation at the borehole outlet [degC]
         - w: Weights of each term in the objective function (3x1 vector) [-]
-        - w_array: Array weights to emphazise the reconstruction of the transfer function's
+        - wₐ: Array weights to emphazise the reconstruction of the transfer function's
             initial impulse.
     Output:
         - sum(e): The value of the objective function to minimize by the deconvolution
     """
 
     # Interpolate the transfer function
-    interp = Interpolator(id, g_opt)
-    g = interp.(idall)
+    interp = Interpolator(p.data.t[p.id], ĝ)
+    p.objfun.g = interp.(p.data.t)
 
     # Compute initial transfer functionn derivatives
-    dg = diff([0; g])
-    ddg = diff(diff([0; g]))
+    p.objfun.dg = diff([0; p.objfun.g])
+    p.objfun.ddg = diff(diff([0; p.objfun.g]))
 
     # Compute each terms of the objective function
-    nt = length(g)
-    e = zeros(3)
-    e[1] = w[1] .* sqrt((sum((w_array .* (convolution(f, g) - T)) .^ 2)) / nt)
-    e[2] = w[2] .* sqrt((sum((dg) .^ 2)) / nt)
-    e[3] = w[3] .* sqrt((sum((ddg) .^ 2)) / nt)
-
-    return sum(e)
+    p.objfun.e = p.w[1] .* rms(p.wₐ .* (convolution_g(p.f_fft, g) - p.data.Texp))
+    p.objfun.e += p.w[2] .* rms(p.objfun.dg .^ 2)
+    p.objfun.e += p.w[3] .* rms(p.objfun.ddg .^ 2)
+    return e
 end

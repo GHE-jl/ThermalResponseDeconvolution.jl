@@ -19,8 +19,12 @@ function TRTData_import(filepath::String)
     Then, the data are stored in the structure TRTData, which is immutable.
     """
     # Read the .csv file
-    DATA = CSV.read(filepath, DataFrame)
+    DATA = CSV.read(filepath, DataFrame)   
+
     # Write the structure
     data = TRTData(DATA[:, 1], DATA[:, 2], DATA[:, 3], DATA[:, 4], DATA[:, 4] .- DATA[1, 4])
+    
+    # Correct the time array
+    data.t[1] = data.t[1] == 0 ? 1e-4 : data.t[1]
     return data
 end

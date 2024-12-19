@@ -11,12 +11,15 @@ function main()
 
     # Import synthetic data
     data = TRTData_import("data/DataCL_TRT.csv")
+    n, c = 35, 2
     #G = CSV.read("Data/gNumCL.csv", DataFrame)
 
     # Deconvolution algorithm    
-    g = deconvolution(data, 35, 2)
+    g, T = deconvolution(data, n=n, c=c)
 
-    return println("Done")
+    show_fig(data.t, data.Tin-data.Tout, g, data.Texp)
+
+    return g, T, println("Done")
 end
 
 main()

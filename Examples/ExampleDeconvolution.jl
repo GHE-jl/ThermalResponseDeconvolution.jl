@@ -20,7 +20,7 @@ function main()
     g_ref = G[:, 2]
 
     # Deconvolution algorithm
-    g = deconvolution(data, 35, 2)
+    g = deconvolution(data, n=35, c=2)
 
     return println("Done")
 end
