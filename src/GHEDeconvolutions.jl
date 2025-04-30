@@ -17,7 +17,7 @@ include("utils.jl")
 export TRTData_import, convolution, deconvolution
 
 # Structures of data
-export TRTData, f_FFT
+export TRTData, f_FFT, deconv_optim₀, deconv_obj, deconv_optim
 
 # Utils export
 export rms, show_fig

@@ -26,15 +26,15 @@ mutable struct deconv_obj
     g::Vector{Float64}
     dg::Vector{Float64}
     ddg::Vector{Float64}
-    e::Vector{Float64}
+    e::Float64
 end
 
-struct deconv_optim
+mutable struct deconv_optim
     data::TRTData
     id::Vector{Integer}
     f_fft::f_FFT
     w::Vector{Float64}
     wₐ::Vector{Float64}
     cnst::Integer
-    objfun::deconv_obj
+    obj_val::deconv_obj
 end

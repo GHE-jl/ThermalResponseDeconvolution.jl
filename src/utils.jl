@@ -33,8 +33,8 @@ function show_fig(t::Vector{Float64},
     )
     p1 = plot!(
         twinx(),
-        t / 3600 / 24,
-        diff([0; g]);
+        t[2:end] / 3600 / 24,
+        diff(g);
         yaxis="ĝ' (-)",
         xscale=:log10,
         yscale=:log10,

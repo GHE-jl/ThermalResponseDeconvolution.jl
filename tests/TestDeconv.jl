@@ -14,7 +14,7 @@ function main()
     n, c = 35, 2
     #G = CSV.read("Data/gNumCL.csv", DataFrame)
 
-    # Deconvolution algorithm    
+    # Deconvolution algorithm
     g, T = deconvolution(data, n=n, c=c)
 
     show_fig(data.t, data.Tin-data.Tout, g, data.Texp)
@@ -23,3 +23,4 @@ function main()
 end
 
 main()
+ 

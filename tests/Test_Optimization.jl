@@ -11,10 +11,10 @@ function example_Optimization()
 end
 
 function obj_fun(x::Vector{T}, p) where T<:Real
-    return sum(abs.((p.x1 .* -expinti.(-p.x2 ./ collect(1:10))).-(x[1] .* -expinti.(-x[2] ./ collect(1:10)))))
+    return sum(abs.((p.x1 .* -expinti.(p.x2 ./ collect(1:10))).-(x[1] .* -expinti.(x[2] ./ collect(1:10)))))
 end
 
-struct P
+mutable struct P
     x1
     x2
 end

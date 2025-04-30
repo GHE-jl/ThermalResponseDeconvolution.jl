@@ -69,9 +69,9 @@ function deconvolution(data::TRTData; n::T=35, c::T=2) where {T<:Integer}
     # 4. Compute initial solution
     p₀ = deconv_optim₀(data, f_fft)
     deconv_ini!(g₀, p₀)
-    show_fig(data.t, f_fft.f, g₀, convolution_g(f_fft, g₀))
+    #show_fig(data.t, f_fft.f, g₀, convolution_g(f_fft, g₀))
     copyto!(g₀i, g₀[id])
-    println(g₀i)
+    #println(id, g₀i)
 
     # 5. Set weights for the multi-objective function
     w, wₐ = set_weights(g₀, data, f_fft)
@@ -79,15 +79,20 @@ function deconvolution(data::TRTData; n::T=35, c::T=2) where {T<:Integer}
     # 7. Optimization
 
     # Initialize parameters
-    obj_val = deconv_obj()
+    obj_val = deconv_obj(g₀,similar(g₀),similar(g₀),0)
     p = deconv_optim(data, id, f_fft, w, wₐ, c, obj_val)
+    const_derivative(similar(g₀i), g₀i, p)
     opt_fun = OptimizationFunction(obj_fun, Optimization.AutoForwardDiff(),
         cons=const_derivative)
+    
+    # Define optimization problem
     prob = OptimizationProblem(opt_fun, g₀i, p,
         lb = fill(0.0, n),
-        ub=fill(Inf, n),
+        ub = fill(100, n),
         lcons = fill(-Inf, n),
         ucons = fill(0.0, n))
+    
+    # Solve the optimization problem
     sol = solve(prob, Optimization.LBFGS())
 
     # 8. Final interpolation and convolution
@@ -223,7 +228,7 @@ function deconv_ini!(g₀::Vector{Float64}, p₀::deconv_optim₀)
     prob = OptimizationProblem(obj_fun₀, x₀, p₀)
     sol = solve(prob, Optim.NelderMead(), g_tol = 1e-3)
     g₀ .= sol.u[1] .* -expinti.(-sol.u[2] ./ p₀.data.t)
-    println("Solved ini: ",sol.u)
+    #println("Solved ini: ",sol.u)
     return g₀
 end
 
@@ -308,7 +313,7 @@ function const_derivative(res::Vector{Float64}, x::Vector{Float64}, p::deconv_op
         Second constraint: negative second derivative on a SpecialFunctions
         """
         # Find time at around 3 hours of test
-        if maximum(p.t) >= 3600 * 3
+        if maximum(p.data.t) >= 3600 * 3
             id_nodes = argmin(abs.(3600 * 3 .- p.data.t[p.id]))
         else
             id_nodes = 0
@@ -337,8 +342,10 @@ function const_derivative(res::Vector{Float64}, x::Vector{Float64}, p::deconv_op
         a = [a1; a2]
         b = [b1; b2]
     elseif cnst == 1
-        a, b = const_1(p.id, n)
+        #TODO Test
+        a, b = const_1(p, n)
     elseif p.cnst == 0
+        #TODO Write zeros and test
         a = []
         b = []
     else
@@ -349,7 +356,7 @@ function const_derivative(res::Vector{Float64}, x::Vector{Float64}, p::deconv_op
     if any(isnan, a) || any(isnan, b)
         error("Presence of NaN in the output.")
     end
-    return res .= a * x .- b
+    return res = a * x .- b
 end
 
 function obj_fun(ĝ::Vector{Float64},
@@ -374,15 +381,15 @@ function obj_fun(ĝ::Vector{Float64},
 
     # Interpolate the transfer function
     interp = Interpolator(p.data.t[p.id], ĝ)
-    p.objfun.g = interp.(p.data.t)
+    p.obj_val.g = interp.(p.data.t)
 
     # Compute initial transfer functionn derivatives
-    p.objfun.dg = diff([0; p.objfun.g])
-    p.objfun.ddg = diff(diff([0; p.objfun.g]))
+    p.obj_val.dg = diff([0; p.obj_val.g])
+    p.obj_val.ddg = diff(diff([0; p.obj_val.g]))
 
     # Compute each terms of the objective function
-    p.objfun.e = p.w[1] .* rms(p.wₐ .* (convolution_g(p.f_fft, g) - p.data.Texp))
-    p.objfun.e += p.w[2] .* rms(p.objfun.dg .^ 2)
-    p.objfun.e += p.w[3] .* rms(p.objfun.ddg .^ 2)
-    return e
+    p.obj_val.e = p.w[1] .* rms(p.wₐ .* (convolution_g(p.f_fft, p.obj_val.g) - p.data.Texp))
+    p.obj_val.e += p.w[2] .* rms(p.obj_val.dg .^ 2)
+    p.obj_val.e += p.w[3] .* rms(p.obj_val.ddg .^ 2)
+    return p.obj_val.e
 end
