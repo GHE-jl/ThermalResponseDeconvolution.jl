@@ -5,51 +5,51 @@ using LinearAlgebra
 
 using GHEDeconvolutions
 
+"""
+    deconvolution(t, f, T, n=35, c=2, show_ini=false, show_opt=false)
+
+Optimization algorithm to perform deconvolution on the experimental data
+extracted from a TRT to recover a short-term g-function (STgF).The function
+computes the estimated STgF and the estimated convolved temperature variations.
+# Arguments
+- t: Time array, starting at 0, with constant time step (see [1]) (s)
+- f: Incremental perturbation function (see note [2] below) [degC, W, W/m]
+- TExp: Experimental temperature variation (T_exp = T_out-T_0) [degC]
+- [Optionnal Inputs]:
+    - n: Number of nodes (default: 35)
+    - c: Choice of constraints (default: 2):
+        0: No constraint
+        1: Positivity
+        2: Positivity and negative derivative slope
+    - show_ini: Display initial guess figure (default: false)
+- show_opt: Display final guess figure (default: false)
+# Outputs
+- g: Interpolated estimated STgF obtained by deconvolution [-]
+- T_conv: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
+- [Optionnal Outputs]:
+    - Time: Computing time to converge [s]
+    - [Id,gOpt]: Node positions and optimized transfer function values
+    - Out: Output variables of the solver [-]
+    - IterOut: Optimization variables at each iteration [-]
+        - [Iteration,Time,fval,funccount]
+
+# Notes
+[1]: The inputs "f" and "TExp" must have constant time step for the
+deconvolution to work effectively, because of how convolution works. Otherwise, these
+vectors must be interpolated.
+[2]: The input "f" is the time derivative of the perturbation function, which
+can be T_{in}-T_{out} [degC], Q [W] or q [W/m]. The transfer function 
+will be defined for the units of input used.
+
+# Reference
+Dion, G., Pasquier, P., & Marcotte, D. (2022). Deconvolution of
+experimental thermal response test data to recover short-term g-function.
+Geothermics, 100, 102302. https://doi.org/10.1016/j.geothermics.2021.102302
+
+Author: Gabriel Dion
+Date: 2024-12
+"""
 function deconvolution(data::TRTData; n::T=35, c::T=2) where {T<:Integer}
-    """
-        deconvolution(t, f, T, n=35, c=2, show_ini=false, show_opt=false)
-    
-    Optimization algorithm to perform deconvolution on the experimental data
-    extracted from a TRT to recover a short-term g-function (STgF).The function
-    computes the estimated STgF and the estimated convolved temperature variations.
-    Inputs:
-        - t: Time array, starting at 0, with constant time step (see [1]) (s)
-        - f: Incremental perturbation function (see note [2] below) [degC, W, W/m]
-        - TExp: Experimental temperature variation (T_exp = T_out-T_0) [degC]
-        - [Optionnal Inputs]:
-          - n: Number of nodes (default: 35)
-          - c: Choice of constraints (default: 2):
-              0: No constraint
-              1: Positivity
-              2: Positivity and negative derivative slope
-         - show_ini: Display initial guess figure (default: false)
-         - show_opt: Display final guess figure (default: false)
-    Outputs:
-        - g: Interpolated estimated STgF obtained by deconvolution [-]
-        - T_conv: Estimated convolved temperature variation (T_conv=f*ghat) [degC]
-        - [Optionnal Outputs]:
-           - Time: Computing time to converge [s]
-           - [Id,gOpt]: Node positions and optimized transfer function values
-           - Out: Output variables of the solver [-]
-           - IterOut: Optimization variables at each iteration [-]
-               - [Iteration,Time,fval,funccount]
-
-     Notes:
-     [1]: The inputs "f" and "TExp" must have constant time step for the
-     deconvolution to work effectively, because of how convolution works. Otherwise, these
-     vectors must be interpolated.
-     [2]: The input "f" is the time derivative of the perturbation function, which
-     can be T_{in}-T_{out} [degC], Q [W] or q [W/m]. The transfer function 
-     will be defined for the units of input used.
-
-     Reference: Dion, G., Pasquier, P., & Marcotte, D. (2022). Deconvolution of
-     experimental thermal response test data to recover short-term g-function.
-     Geothermics, 100, 102302. https://doi.org/10.1016/j.geothermics.2021.102302
-
-     Author: Gabriel Dion
-     Date: 2024-12
-    """
-
     # 0. Data validation
     data_validation(data)
     option_validation(n, c)
@@ -69,9 +69,9 @@ function deconvolution(data::TRTData; n::T=35, c::T=2) where {T<:Integer}
     # 4. Compute initial solution
     p₀ = deconv_optim₀(data, f_fft)
     deconv_ini!(g₀, p₀)
-    #show_fig(data.t, f_fft.f, g₀, convolution_g(f_fft, g₀))
+    show_fig(data.t, f_fft.f, g₀, convolution_g(f_fft, g₀))
     copyto!(g₀i, g₀[id])
-    #println(id, g₀i)
+    println(id, g₀i)
 
     # 5. Set weights for the multi-objective function
     w, wₐ = set_weights(g₀, data, f_fft)
@@ -117,10 +117,12 @@ function data_validation(data::TRTData)
     if any(!isreal(getfield(data, field)) for field in fieldnames(typeof(data)))
         error("inputs contain imaginary values.")
         # Check for NaN values
-    elseif any(isnan.(getfield(data, field)) for field in fieldnames(typeof(data)) if fieldtype(typeof(data), field) <: AbstractFloat)
+    elseif any(isnan.(getfield(data, field)) for field in fieldnames(typeof(data)) if 
+        fieldtype(typeof(data), field) <: AbstractFloat)
         error("inputs contains NaN values.")
         # Check for NaN values
-    elseif any(isinf(getfield(data, field)) for field in fieldnames(typeof(data)) if fieldtype(typeof(data), field) <: AbstractFloat)
+    elseif any(isinf(getfield(data, field)) for field in fieldnames(typeof(data)) if 
+        fieldtype(typeof(data), field) <: AbstractFloat)
         error("inputs contains infinite values.")
     end
 end

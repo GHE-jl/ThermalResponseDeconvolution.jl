@@ -1,6 +1,7 @@
-name = "GHEDeconvolutions"
+name = "ThermalResponseDeconvolutions"
 uuid = "42306d8c-6726-495e-80e4-f40f83d40dd5"
 authors = ["GabrielDion <dion.gabriel100@gmail.com>"]
+version = "1.0.0-DEV"
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"

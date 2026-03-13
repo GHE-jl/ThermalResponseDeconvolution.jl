@@ -1,10 +1,4 @@
-"""
-GHEDeconvolutions.jl is a package used to apply a deconvolution algorithm to the data
-obtained from ground heat exchanger (GHE). The goal to estimate the GHE transfer function
-of the system (i.e., GHE) only from experimental data.
-"""
-
-module GHEDeconvolutions
+module ThermalResponseDeconvolution
 
 # Files to include in the package (order is important!)
 include("Structures.jl")
