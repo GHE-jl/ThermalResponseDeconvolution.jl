@@ -4,9 +4,8 @@ Script that includes some general functions used throughout the pagkage.
 
 using Plots
 
-function rms(x::Vector{T} where {T<:Real})
-    rmse = sqrt(sum(y^2 for y in x) / length(x))
-    return rmse
+function rms(x::AbstractVector{<:Real})
+    return sqrt(sum(y^2 for y in x) / length(x))
 end
 
 function show_fig(t::Vector{Float64},

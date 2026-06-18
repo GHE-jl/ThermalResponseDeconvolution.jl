@@ -1,28 +1,16 @@
 """
-Exemple of convolution on thermal response test data.
-In Julia, this script can be called from the project folder.
+Example of deconvolution on thermal response test data.
 """
 
-include("../src/Deconvolution.jl")
-
+using ThermalResponseDeconvolutions
 using CSV
 using DataFrames
-using Plots
-using Revise
 
-function main()
+data = TRTData_import(joinpath(@__DIR__, "..", "data", "DataCL_TRT.csv"))
 
-    # Import synthetic data
-    data = TRTData_import("data/DataCL_TRT.csv")
-    gG = CSV.read("data/gNumCL.csv", DataFrame, skipto=6)
-    DATA = CSV.read("data/data.csv", DataFrame)
-    G = CSV.read("data/gRef.csv", DataFrame)
-    g_ref = G[:, 2]
+# Deconvolution algorithm
+g, T = deconvolution(data; n=35, c=2, show_opt=true)
 
-    # Deconvolution algorithm
-    g = deconvolution(data, n=35, c=2)
-
-    return println("Done")
-end
-
-main()
+# Reconstruction quality
+rmse = rms(T .- data.Texp)
+println("Temperature RMSE: ", round(rmse; digits=3), " [degC]")
