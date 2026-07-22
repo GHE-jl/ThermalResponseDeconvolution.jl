@@ -14,6 +14,6 @@ export TRTData_import, convolution, deconvolution
 export TRTData, f_FFT, DeconvParams, Deconv0Params
 
 # Utilities
-export rms, show_fig, convolution_g
+export rms, show_fig, convolution_g, set_nodes
 
 end

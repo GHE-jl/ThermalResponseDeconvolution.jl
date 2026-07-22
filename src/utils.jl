@@ -8,6 +8,32 @@ function rms(x::AbstractVector{<:Real})
     return sqrt(sum(y^2 for y in x) / length(x))
 end
 
+"""
+    set_nodes(nt, n₀)
+
+Function that sets a logarithmic progression of node positions on a transfer function.
+# Arguments
+    - `nt`: Total number of data in the input vectors [-]
+    - `n₀`: User defined number of nodes on the transfer function [-]
+# Output
+    - `id`: A vector of length "n₀" of node positions on the transfer function [-]
+"""
+function set_nodes(nt::Real, n₀::Integer)
+    # Basic inputs
+    n_tmp = n₀ - 1
+    id = Vector{Integer}(undef, n_tmp)
+    # Fill the vector with node positions
+    while length(id) < n₀
+        empty!(id)
+        for x in range(0, stop=log10(nt), length=n_tmp)
+            push!(id, round(Int, exp10(x)))
+        end
+        unique!(id)
+        n_tmp += 1
+    end
+    return id
+end
+
 function show_fig(t::Vector{Float64},
     f::Vector{Float64},
     g::Vector{Float64},
