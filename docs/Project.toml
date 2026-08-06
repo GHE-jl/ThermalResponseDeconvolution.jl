@@ -1,0 +1,7 @@
+[deps]
+ThermalResponseDeconvolution = "42306d8c-6726-495e-80e4-f40f83d40dd5"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+
+[compat]
+Documenter = "1"
+julia = "1.11"
