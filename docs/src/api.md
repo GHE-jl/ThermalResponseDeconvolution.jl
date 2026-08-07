@@ -12,14 +12,11 @@ Modules = [ThermalResponseDeconvolution]
 
 - [`deconvolution`](@ref) — recover a thermal response function from paired temperature/heat-load data
 - [`set_nodes`](@ref) — log-spaced node indices used by `deconvolution`
+- [`rms`](@ref) — root-mean-square, e.g. for reporting a fit's residual
 
 ### Convolution
 
 - [`convolution`](@ref) — non-circular convolution, e.g. to reconstruct a temperature response
-
-### Utility
-
-- [`rms`](@ref) — root-mean-square, e.g. for reporting a fit's residual
 
 !!! note "Internal functions"
     Everything else in the package (names starting with `_`) is an unexported implementation

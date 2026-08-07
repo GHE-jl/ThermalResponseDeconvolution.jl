@@ -1,16 +1,14 @@
 # ThermalResponseDeconvolution.jl
 
-*Recover a short-term thermal response function of a ground heat exchanger by deconvolution —
-no physical ground model required.*
+*Recover a borehole outlet thermal response function of a ground heat exchanger by deconvolution.*
 
-`ThermalResponseDeconvolution.jl` estimates a borehole's short-term thermal response function
+`ThermalResponseDeconvolution.jl` estimates a borehole's thermal response function
 directly from paired fluid-temperature and heat-load data, by solving a constrained multi-objective
 optimization problem, rather than fitting a physical ground model (as
-[ThermalResponseTest.jl](https://github.com/GHE-jl/ThermalResponseTest.jl) does with the infinite
-or finite line source). Because it makes no ground-model assumption, it applies equally to data
+[ThermalResponseTest.jl](https://github.com/GHE-jl/ThermalResponseTest.jl) does). Because it makes no ground-model assumption, it applies equally to data
 from a dedicated thermal response test (TRT) or from ordinary ground source heat pump (GSHP)
-operating data logged over time — anywhere paired temperature and heat-load series with a constant
-time step are available.
+operating data logged over time (anywhere paired temperature and heat-load series with a constant
+time step are available).
 
 ## Installation
 
@@ -33,11 +31,12 @@ pkg> add https://github.com/GHE-jl/ThermalResponseDeconvolution.jl
 using ThermalResponseDeconvolution
 
 # f: incremental perturbation function [degC], Texp: measured temperature variation [degC]
-f    = diff([0.0; Tin .- Tout])
+f = diff([0.0; Tin .- Tout])
 Texp = Tout .- Tout[1]
 
-ĝ, gOpt = deconvolution(t, f, Texp; n=50, c=2)   # ĝ: thermal response function, gOpt: node values
-T̂       = collect(convolution(f, ĝ))             # reconstructed temperature, for validation
+ĝ, gOpt = deconvolution(t, f, Texp; n=50, c=2)  # ĝ: thermal response function, gOpt: node values
+T̂ = collect(convolution(f, ĝ))                  # reconstructed temperature, for validation
+rmse = rms(T̂ .- Texp)                           # Temperature root mean square error
 ```
 
 ## Manual outline
@@ -64,7 +63,7 @@ T̂       = collect(convolution(f, ĝ))             # reconstructed temperature,
 
 `ThermalResponseDeconvolution.jl` is a model-free, standalone alternative to the model-based
 inversion in [ThermalResponseTest.jl](https://github.com/GHE-jl/ThermalResponseTest.jl): the two
-packages solve related but distinct problems and can be used independently or side by side —
-deconvolution to recover the short-term response function itself, model inversion to recover
-physical ground properties (e.g. thermal conductivity) from an assumed ground model. Neither
-package depends on the other.
+packages solve related but distinct problems and can be used independently or side by side:
+deconvolution recovers the borehole thermal response function itself, while model inversion
+recovers physical ground properties (e.g. thermal conductivity) from an assumed ground model.
+Neither package depends on the other.

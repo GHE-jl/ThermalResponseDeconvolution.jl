@@ -101,6 +101,10 @@ Return `n0` log-spaced, unique integer node indices on `1:nData`.
     - `id`: Log-spaced, unique integer node indices on `1:nData` [-].
 """
 function set_nodes(nData::Integer, n0::Integer)
+    # 1:nData holds only nData distinct integers, so n0 > nData can never be reached and would
+    # otherwise loop forever below.
+    n0 <= nData || throw(ArgumentError("n0 ($n0) cannot exceed nData ($nData)"))
+
     n_tmp = n0 - 1
     id = Int[]
     while length(id) != n0

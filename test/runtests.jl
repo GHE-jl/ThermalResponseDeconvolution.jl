@@ -26,7 +26,8 @@ using ThermalResponseDeconvolution
         # Linearity: conv(f, a*g1 + b*g2) == a*conv(f,g1) + b*conv(f,g2)
         g3 = [0.5, 1.5, -1.0]
         a, b = 2.0, 3.0
-        @test convolution(f2, a .* g2 .+ b .* g3) ≈ a .* convolution(f2, g2) .+ b .* convolution(f2, g3)
+        @test convolution(f2, a .* g2 .+ b .* g3) ≈ a .* convolution(f2, g2) .+ b .*
+            convolution(f2, g3)
 
         # Mismatched lengths error
         @test_throws ArgumentError convolution([1.0, 2.0], [1.0, 2.0, 3.0])
@@ -49,8 +50,12 @@ using ThermalResponseDeconvolution
         @test id[end] == nData
         @test all(1 .<= id .<= nData)
 
-        # Requesting more nodes than data points is not meaningful and must not hang
+        # Fewer nodes than data points is the normal case
         @test length(set_nodes(10, 5)) == 5
+
+        # 1:nData only has nData distinct integers, so requesting more nodes than data points is
+        # unsatisfiable; it must raise instead of looping forever
+        @test_throws ArgumentError set_nodes(5, 10)
     end
 
     @testset "deconvolution on sample data" begin

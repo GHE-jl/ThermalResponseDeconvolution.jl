@@ -5,14 +5,14 @@
 [![Docs: stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://GHE-jl.github.io/ThermalResponseDeconvolution.jl/stable)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-A Julia package to recover a short-term thermal response function of a ground heat exchanger by
-deconvolution of paired fluid-temperature and heat-load data. The underlying data can come from
-either a thermal response test (TRT) or normal ground source heat pump (GSHP) operating data — the
-method only assumes a constant time step, not a controlled experiment.
+A Julia package to recover a borehole outlet thermal response function of a ground heat exchanger by
+deconvolution of paired fluid-temperature and heat-load data. The data can come from
+either a thermal response test (TRT) or ground source heat pump (GSHP) operating data (the
+method only assumes a constant time step, not a controlled experiment).
 
 Deconvolution is posed as a constrained, multi-objective optimization problem (weighted temperature
 misfit plus first- and second-derivative regularization on the response function), solved with
-[Optimization.jl](https://github.com/SciML/Optimization.jl) (NLopt SLSQP backend).
+[Optimization.jl](https://github.com/SciML/Optimization.jl) using the NLopt SLSQP backend.
 
 ## Quick start
 
@@ -20,12 +20,19 @@ misfit plus first- and second-derivative regularization on the response function
 using ThermalResponseDeconvolution
 
 # f: incremental perturbation function [degC], Texp: measured temperature variation [degC]
-f    = diff([0.0; Tin .- Tout])
+f = diff([0.0; Tin .- Tout])
 Texp = Tout .- Tout[1]
 
-ĝ, gOpt = deconvolution(t, f, Texp; n=50, c=2)   # ĝ: thermal response function, gOpt: node values
-T̂       = collect(convolution(f, ĝ))             # reconstructed temperature, for validation
+ĝ, gOpt = deconvolution(t, f, Texp; n=50, c=2)  # ĝ: thermal response function, gOpt: node values
+T̂ = collect(convolution(f, ĝ))                  # reconstructed temperature, for validation
+rmse = rms(T̂ .- Texp)                           # Temperature root mean square error
 ```
+
+## Convolution
+
+| Function | Purpose |
+|---|---|
+| `convolution(f, g)` | Non-circular convolution of `f` and `g`, truncated to `length(f)`. Used to reconstruct the temperature response from a (measured or deconvolved) thermal response function. Same implementation as [`convolutionf`](https://github.com/GHE-jl/GroundHeatExchanger.jl/blob/main/src/temporal_superposition.jl) in GroundHeatExchanger.jl |
 
 ## Deconvolution
 
@@ -39,12 +46,6 @@ The `c` keyword selects the inequality constraints on the response function: `0`
 (positive first derivative), or `2` (adds a negative second derivative past roughly 3 h from the
 start of the record).
 
-## Convolution
-
-| Function | Purpose |
-|---|---|
-| `convolution(f, g)` | Non-circular convolution of `f` and `g`, truncated to `length(f)`. Used to reconstruct the temperature response from a (measured or deconvolved) thermal response function. |
-
 ## Scripts
 
 Run from the package root with `julia --project=script/ script/<name>.jl`. First-time setup:
@@ -54,7 +55,7 @@ julia --project=script/ -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
 
 | Script | What it shows |
 |---|---|
-| `script_deconvolution.jl` | End-to-end deconvolution on sample TRT data, with the reconstructed temperature and response-function derivative, validated against a reference solution |
+| `script_deconvolution.jl` | End-to-end deconvolution on TRT data, with the reconstructed temperature and response-function derivative, validated against a reference solution. |
 
 ## Installation
 
@@ -78,7 +79,7 @@ pkg> add https://github.com/GHE-jl/ThermalResponseDeconvolution.jl
 | Package | Used for |
 |---|---|
 | [DSP.jl](https://github.com/JuliaDSP/DSP.jl) | FFT-based convolution |
-| [Optimization.jl](https://github.com/SciML/Optimization.jl) / [OptimizationNLopt.jl](https://github.com/SciML/Optimization.jl) | Constrained multi-objective optimization (NLopt SLSQP backend) |
+| [Optimization.jl](https://github.com/SciML/Optimization.jl) / [OptimizationNLopt.jl](https://github.com/SciML/Optimization.jl) | Constrained multi-objective optimization with the NLopt SLSQP backend |
 | [FiniteDiff.jl](https://github.com/JuliaDiff/FiniteDiff.jl) | Finite-difference gradients for the optimization |
 | [PCHIPInterpolation.jl](https://github.com/gerlero/PCHIPInterpolation.jl) | Shape-preserving interpolation of the node values onto the full index axis |
 | [SpecialFunctions.jl](https://github.com/JuliaMath/SpecialFunctions.jl) | Exponential-integral fit used for the initial guess |
