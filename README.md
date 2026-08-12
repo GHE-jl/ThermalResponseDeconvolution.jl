@@ -3,7 +3,7 @@
 [![CI](https://github.com/GHE-jl/ThermalResponseDeconvolution.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/GHE-jl/ThermalResponseDeconvolution.jl/actions/workflows/CI.yml)
 [![Docs: dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://GHE-jl.github.io/ThermalResponseDeconvolution.jl/dev)
 [![Docs: stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://GHE-jl.github.io/ThermalResponseDeconvolution.jl/stable)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 A Julia package to recover a borehole outlet thermal response function of a ground heat exchanger by
 deconvolution of paired fluid-temperature and heat-load data. The data can come from
