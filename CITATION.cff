@@ -6,7 +6,7 @@ version: 1.0.0
 date-released: 2026-08-05
 url: "https://github.com/GHE-jl/ThermalResponseDeconvolution.jl"
 repository-code: "https://github.com/GHE-jl/ThermalResponseDeconvolution.jl"
-license: GPL-3.0
+license: AGPL-3.0
 authors:
   - family-names: "Dion"
     given-names: "Gabriel"
